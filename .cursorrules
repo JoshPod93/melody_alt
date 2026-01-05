@@ -1,0 +1,30 @@
+# UPIC Clone Project - Cursor Rules
+
+## Environment
+- **Always use the `upic` conda environment** for all Python operations
+- Activate with: `conda activate upic`
+- Python version: 3.11
+
+## Project Overview
+This is a Python-based clone of the UPIC (Unité Polyagogique Informatique du CEMAMu) system, originally created by Iannis Xenakis. The system allows users to draw waveforms and musical compositions graphically, converting visual representations into sound.
+
+## Code Standards
+- Use type hints for all function signatures
+- Follow PEP 8 style guidelines
+- Document all public functions with docstrings
+- Keep audio processing code separate from GUI code
+
+## File Structure
+- `src/` - Main source code
+- `docs/` - Documentation
+- `references/` - Reference materials and papers
+- `tests/` - Unit tests
+
+## Dependencies
+- All new dependencies must be installed in the `upic` conda environment
+- Update requirements.txt when adding new packages
+
+## Git Workflow
+- Commit frequently with descriptive messages
+- Keep commits atomic and focused
+
