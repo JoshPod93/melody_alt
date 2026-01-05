@@ -30,6 +30,7 @@ from ..core.frequency_table import FrequencyTableLibrary
 
 from .page_canvas import PageCanvas
 from .palette_panel import PalettePanel
+from .arc_properties import ArcPropertiesPanel
 from .waveform_editor import WaveformEditorDialog
 from .envelope_editor import EnvelopeEditorDialog
 
@@ -241,7 +242,7 @@ class MainWindow(QMainWindow):
         self.transport = TransportBar()
         main_layout.addWidget(self.transport)
         
-        # Splitter for canvas and palette
+        # Splitter for canvas and right panel
         splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter, stretch=1)
         
@@ -249,14 +250,29 @@ class MainWindow(QMainWindow):
         self.canvas = PageCanvas()
         splitter.addWidget(self.canvas)
         
+        # Right panel container (stacked: palette or arc properties)
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+        
+        # Arc properties panel (shown when arc selected)
+        self.arc_properties = ArcPropertiesPanel(
+            self.project.waveforms,
+            self.project.envelopes
+        )
+        right_layout.addWidget(self.arc_properties)
+        
         # Palette panel (waveforms, envelopes)
         self.palette = PalettePanel(
             self.project.waveforms,
             self.project.envelopes
         )
-        splitter.addWidget(self.palette)
+        right_layout.addWidget(self.palette)
         
-        # Set splitter sizes (80% canvas, 20% palette)
+        splitter.addWidget(right_panel)
+        
+        # Set splitter sizes (80% canvas, 20% right panel)
         splitter.setSizes([800, 200])
         
         # Toolbar
@@ -406,9 +422,13 @@ class MainWindow(QMainWindow):
         self.palette.waveform_selected.connect(self.canvas.set_current_waveform)
         self.palette.envelope_selected.connect(self.canvas.set_current_envelope)
         
+        # Arc properties
+        self.arc_properties.arc_changed.connect(self._on_arc_properties_changed)
+        
         # Canvas
         self.canvas.arc_created.connect(self._on_arc_created)
         self.canvas.selection_changed.connect(self._on_selection_changed)
+        self.canvas.modulator_linked.connect(self._on_modulator_linked)
     
     def _update_page(self) -> None:
         """Update canvas with current page."""
@@ -594,13 +614,37 @@ class MainWindow(QMainWindow):
     
     def _on_selection_changed(self, selected_ids: list) -> None:
         """Handle selection change."""
+        page = self.project.get_active_page()
         count = len(selected_ids)
+        
         if count == 0:
             self.status_bar.showMessage("No selection")
+            self.arc_properties.set_arc(None)
         elif count == 1:
             self.status_bar.showMessage(f"Selected 1 arc")
+            # Show arc properties
+            if page:
+                arc = page.get_arc(selected_ids[0])
+                self.arc_properties.set_arc(arc, page)
         else:
             self.status_bar.showMessage(f"Selected {count} arcs")
+            self.arc_properties.set_arc(None)  # Hide for multi-select
+    
+    def _on_arc_properties_changed(self, arc_id: str) -> None:
+        """Handle arc property changes from the properties panel."""
+        self.canvas.update()
+    
+    def _on_modulator_linked(self, carrier_id: str, modulator_id: str) -> None:
+        """Handle modulator linking via Ctrl+Click."""
+        page = self.project.get_active_page()
+        if page:
+            carrier = page.get_arc(carrier_id)
+            modulator = page.get_arc(modulator_id)
+            if carrier and modulator:
+                carrier.modulator_id = modulator_id
+                self.arc_properties.set_arc(carrier, page)  # Refresh panel
+                self.canvas.update()
+                self.status_bar.showMessage(f"Linked: {modulator.name} → {carrier.name}")
     
     def closeEvent(self, event) -> None:
         """Handle window close."""

@@ -102,6 +102,7 @@ class PageCanvas(QWidget):
     arc_modified = pyqtSignal(str)  # Arc ID
     arc_deleted = pyqtSignal(str)  # Arc ID
     selection_changed = pyqtSignal(list)  # List of selected arc IDs
+    modulator_linked = pyqtSignal(str, str)  # Carrier ID, Modulator ID
     
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -295,15 +296,24 @@ class PageCanvas(QWidget):
                 arc_id = self._get_arc_at_point(pos)
                 
                 if arc_id:
-                    # Modify selection
-                    if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    # Ctrl+Click: Link as modulator to currently selected arc
+                    if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                        if len(self.selected_arc_ids) == 1 and self.selected_arc_ids[0] != arc_id:
+                            # Link: clicked arc becomes modulator for selected arc
+                            carrier_id = self.selected_arc_ids[0]
+                            modulator_id = arc_id
+                            self.modulator_linked.emit(carrier_id, modulator_id)
+                    # Shift+Click: Add/remove from selection
+                    elif event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                         if arc_id in self.selected_arc_ids:
                             self.selected_arc_ids.remove(arc_id)
                         else:
                             self.selected_arc_ids.append(arc_id)
+                        self.selection_changed.emit(self.selected_arc_ids)
                     else:
+                        # Normal click: select this arc
                         self.selected_arc_ids = [arc_id]
-                    self.selection_changed.emit(self.selected_arc_ids)
+                        self.selection_changed.emit(self.selected_arc_ids)
                 else:
                     # Start selection rectangle
                     if not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
@@ -481,6 +491,9 @@ class PageCanvas(QWidget):
         if self.page:
             for arc in self.page.arcs.values():
                 self._draw_arc(painter, arc)
+            
+            # Draw modulation connections
+            self._draw_modulation_links(painter)
         
         # Drawing preview
         if self.is_drawing and self.drawing_points:
@@ -563,11 +576,13 @@ class PageCanvas(QWidget):
         
         color = QColor(*arc.color)
         if arc.muted:
-            color.setAlpha(100)
+            color.setAlpha(120)
+            color = QColor(150, 150, 150, 120)  # Gray for muted
         if is_hovered and not is_selected:
             color = color.lighter(120)
         
         width = self.selected_line_width if is_selected else self.arc_line_width
+        line_style = Qt.PenStyle.DotLine if arc.muted else Qt.PenStyle.SolidLine
         
         # Draw path
         path = QPainterPath()
@@ -579,7 +594,7 @@ class PageCanvas(QWidget):
             pos = self.transform.data_to_point(point.time, point.pitch)
             path.lineTo(pos)
         
-        painter.setPen(QPen(color, width, Qt.PenStyle.SolidLine, 
+        painter.setPen(QPen(color, width, line_style, 
                            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
         painter.drawPath(path)
         
@@ -617,6 +632,53 @@ class PageCanvas(QWidget):
                 int(x), self.transform.top_margin,
                 int(x), self.height() - self.transform.bottom_margin
             )
+    
+    def _draw_modulation_links(self, painter: QPainter) -> None:
+        """Draw lines connecting modulators to carriers."""
+        if self.page is None:
+            return
+        
+        for arc in self.page.arcs.values():
+            if arc.modulator_id:
+                modulator = self.page.get_arc(arc.modulator_id)
+                if modulator and modulator.points and arc.points:
+                    # Get center points of each arc
+                    mod_center_time = (modulator.start_time + modulator.end_time) / 2
+                    mod_center_pitch = (modulator.min_pitch + modulator.max_pitch) / 2
+                    
+                    carrier_center_time = (arc.start_time + arc.end_time) / 2
+                    carrier_center_pitch = (arc.min_pitch + arc.max_pitch) / 2
+                    
+                    # Convert to screen coordinates
+                    mod_pos = self.transform.data_to_point(mod_center_time, mod_center_pitch)
+                    carrier_pos = self.transform.data_to_point(carrier_center_time, carrier_center_pitch)
+                    
+                    # Draw arrow from modulator to carrier
+                    painter.setPen(QPen(QColor(255, 170, 0, 180), 2, Qt.PenStyle.DashLine))
+                    painter.drawLine(mod_pos, carrier_pos)
+                    
+                    # Draw arrowhead at carrier end
+                    import math
+                    angle = math.atan2(carrier_pos.y() - mod_pos.y(), 
+                                      carrier_pos.x() - mod_pos.x())
+                    arrow_size = 10
+                    arrow_p1 = QPointF(
+                        carrier_pos.x() - arrow_size * math.cos(angle - 0.4),
+                        carrier_pos.y() - arrow_size * math.sin(angle - 0.4)
+                    )
+                    arrow_p2 = QPointF(
+                        carrier_pos.x() - arrow_size * math.cos(angle + 0.4),
+                        carrier_pos.y() - arrow_size * math.sin(angle + 0.4)
+                    )
+                    
+                    arrow_path = QPainterPath()
+                    arrow_path.moveTo(carrier_pos)
+                    arrow_path.lineTo(arrow_p1)
+                    arrow_path.moveTo(carrier_pos)
+                    arrow_path.lineTo(arrow_p2)
+                    
+                    painter.setPen(QPen(QColor(255, 170, 0, 220), 2))
+                    painter.drawPath(arrow_path)
     
     def _calculate_grid_step(self, range_val: float, target_lines: int) -> float:
         """Calculate appropriate grid step size."""
