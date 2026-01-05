@@ -61,7 +61,7 @@ class Arc:
     points: List[ArcPoint] = field(default_factory=list)
     waveform_name: str = "Sine"
     envelope_name: str = "ADSR"
-    amplitude: float = 0.8
+    amplitude: float = 0.5  # Reduced to prevent clipping
     pan: float = 0.0
     modulator_id: Optional[str] = None
     modulation_index: float = 0.0
@@ -291,7 +291,7 @@ class Arc:
             name=data.get('name', 'Arc'),
             waveform_name=data.get('waveform_name', 'Sine'),
             envelope_name=data.get('envelope_name', 'ADSR'),
-            amplitude=data.get('amplitude', 0.8),
+            amplitude=data.get('amplitude', 0.5),
             pan=data.get('pan', 0.0),
             modulator_id=data.get('modulator_id'),
             modulation_index=data.get('modulation_index', 0.0),

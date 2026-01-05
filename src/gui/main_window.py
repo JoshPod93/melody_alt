@@ -81,7 +81,7 @@ class TransportBar(QWidget):
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setMinimum(0)
         self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(80)
+        self.volume_slider.setValue(50)
         self.volume_slider.setMaximumWidth(100)
         layout.addWidget(self.volume_slider)
     
@@ -520,19 +520,13 @@ class MainWindow(QMainWindow):
         self.canvas.delete_selected()
     
     def _clear_all(self) -> None:
-        """Clear all arcs from the page."""
+        """Clear all arcs from the page immediately."""
         page = self.project.get_active_page()
-        if page and len(page.arcs) > 0:
-            reply = QMessageBox.question(
-                self, "Clear All",
-                f"Delete all {len(page.arcs)} arcs? This cannot be undone.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                page.clear()
-                self.canvas.selected_arc_ids.clear()
-                self.canvas.update()
-                self.status_bar.showMessage("Cleared all arcs")
+        if page:
+            page.clear()
+            self.canvas.selected_arc_ids.clear()
+            self.canvas.update()
+            self.status_bar.showMessage("Cleared all arcs")
     
     def _edit_waveforms(self) -> None:
         """Open waveform editor dialog."""

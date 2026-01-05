@@ -192,8 +192,8 @@ class Synthesizer:
     _stream: Optional[sd.OutputStream] = None
     _stop_event: Event = field(default_factory=Event)
     
-    # Master volume
-    master_volume: float = 0.8
+    # Master volume (reduced to prevent clipping)
+    master_volume: float = 0.5
     
     # Callbacks
     on_time_update: Optional[Callable[[float], None]] = None
@@ -337,7 +337,7 @@ class Synthesizer:
         self._assign_voices()
         
         # Mix all active voices
-        mixed = np.zeros(frames)
+        mixed = np.zeros(frames, dtype=np.float64)
         active_count = 0
         
         for voice in self.voices:
@@ -350,12 +350,15 @@ class Synthesizer:
                 mixed += samples
                 active_count += 1
         
-        # Don't normalize - just mix and apply volume
-        # Normalization was causing issues with single voices
+        # Normalize by number of active voices to prevent clipping
+        if active_count > 0:
+            mixed = mixed / max(active_count, 1)
+        
+        # Apply master volume
         mixed = mixed * self.master_volume
         
-        # Clip to valid range
-        mixed = np.clip(mixed, -1, 1)
+        # Soft clip to prevent harsh distortion
+        mixed = np.tanh(mixed * 0.8) * 0.9
         
         # Output as stereo (ensure float32 for sounddevice)
         outdata[:, 0] = mixed.astype(np.float32)
