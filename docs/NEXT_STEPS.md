@@ -117,7 +117,155 @@ src/
 
 ---
 
-## 4. Other Ideas for Future
+## 4. Scale/Key Locking (Pitch Quantization)
+
+**Priority:** High  
+**Status:** Planned
+
+### Concept
+Lock the pitch axis to specific musical scales so all drawn notes are "in key."
+No wrong notes - everything harmonizes automatically.
+
+### Desired Behavior
+- Dropdown to select scale: C Major, A Minor, D Dorian, Pentatonic, Blues, etc.
+- Dropdown to select root note: C, C#, D, D#, E, F, F#, G, G#, A, A#, B
+- Drawn pitches snap to nearest note in the selected scale
+- Option for "snap while drawing" vs "snap on playback"
+- Visual: Grid lines show valid pitches
+
+### Scale Definitions
+```python
+SCALES = {
+    "Major":        [0, 2, 4, 5, 7, 9, 11],  # W W H W W W H
+    "Minor":        [0, 2, 3, 5, 7, 8, 10],  # Natural minor
+    "Harmonic Minor": [0, 2, 3, 5, 7, 8, 11],
+    "Melodic Minor": [0, 2, 3, 5, 7, 9, 11],
+    "Dorian":       [0, 2, 3, 5, 7, 9, 10],
+    "Phrygian":     [0, 1, 3, 5, 7, 8, 10],
+    "Lydian":       [0, 2, 4, 6, 7, 9, 11],
+    "Mixolydian":   [0, 2, 4, 5, 7, 9, 10],
+    "Locrian":      [0, 1, 3, 5, 6, 8, 10],
+    "Pentatonic Major": [0, 2, 4, 7, 9],
+    "Pentatonic Minor": [0, 3, 5, 7, 10],
+    "Blues":        [0, 3, 5, 6, 7, 10],
+    "Chromatic":    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # All notes
+    "Whole Tone":   [0, 2, 4, 6, 8, 10],
+}
+```
+
+### Implementation
+1. Extend `FrequencyTable` to support scale-locked modes
+2. Add `scale_name` and `root_note` to `PageSettings`
+3. Create `FrequencyTable.from_scale(scale_name, root_note, octave_range)`
+4. UI: Add scale/key dropdowns to toolbar or settings panel
+5. Update grid drawing to show scale degrees
+
+### UI Mockup
+```
+[Scale: Major ▼] [Key: A ▼] [Octaves: 4 ▼]
+```
+
+---
+
+## 5. Time Quantization (Rhythmic Grid)
+
+**Priority:** High  
+**Status:** Planned
+
+### Concept
+Quantize note timing to a rhythmic grid for more structured, rhythmic music.
+Like a step sequencer overlay on the freeform canvas.
+
+### Desired Behavior
+- Toggle: Quantize Mode ON/OFF
+- Grid resolution: 1/4, 1/8, 1/16, 1/32 notes (or seconds/ms)
+- BPM setting for musical timing
+- Options:
+  - **Snap Start**: Arc start times snap to grid
+  - **Snap Duration**: Arc lengths snap to grid divisions
+  - **Gate Mode**: Sound only plays at grid intervals (staccato effect)
+
+### Gate Mode Detail
+Instead of continuous sound following the arc, sound triggers at each grid point:
+- Arc defines pitch trajectory
+- Sound "pulses" at each 1/8 note (or selected division)
+- Creates rhythmic, sequencer-like patterns
+- Amplitude envelope restarts at each gate
+
+### Visual Feedback
+- Vertical grid lines at beat divisions
+- Beat 1 = thicker line
+- Show BPM in transport bar
+- Optional: Beat counter display
+
+### Implementation
+```python
+@dataclass
+class RhythmSettings:
+    enabled: bool = False
+    bpm: float = 120.0
+    division: int = 8  # 1/8 notes
+    gate_mode: bool = False
+    gate_length: float = 0.5  # 50% of division
+    swing: float = 0.0  # -1 to 1, shuffle feel
+
+# In synthesizer, if gate_mode:
+def apply_gate(samples, current_time, rhythm_settings):
+    beat_duration = 60.0 / rhythm_settings.bpm
+    division_duration = beat_duration / (rhythm_settings.division / 4)
+    
+    # Calculate gate envelope
+    position_in_division = current_time % division_duration
+    gate_time = division_duration * rhythm_settings.gate_length
+    
+    if position_in_division > gate_time:
+        return samples * 0  # Silence between gates
+    return samples
+```
+
+### UI Mockup
+```
+[⏱ Quantize] [BPM: 120] [1/8 ▼] [☑ Gate Mode]
+```
+
+---
+
+## 6. Expressiveness Enhancements
+
+**Priority:** Medium  
+**Status:** Ideas
+
+### Velocity/Dynamics
+- Draw with pressure sensitivity (if tablet)
+- Thicker line = louder
+- Or: Vertical position within arc = velocity
+
+### Articulation Modes
+- **Legato**: Smooth pitch transitions (current behavior)
+- **Portamento**: Glide between pitches with adjustable time
+- **Staccato**: Short, detached notes (via gate mode)
+
+### Per-Arc Effects
+- Vibrato depth/rate
+- Tremolo depth/rate  
+- Pitch bend range
+- Filter cutoff (if we add filters)
+
+### Global Effects (Future)
+- Reverb
+- Delay
+- Chorus
+- Filter with envelope
+
+### Microtuning
+- Support for non-12-TET tunings
+- Just intonation
+- Custom cent offsets per note
+- Import Scala (.scl) files
+
+---
+
+## 7. Other Ideas for Future
 
 ### Quick Wins
 - Keyboard shortcuts for common actions (mute = M, solo = S)
