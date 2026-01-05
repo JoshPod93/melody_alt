@@ -83,6 +83,15 @@ class TransportBar(QWidget):
         self.duration_label.setStyleSheet("font-family: monospace; font-size: 14px;")
         layout.addWidget(self.duration_label)
         
+        layout.addSpacing(20)
+        
+        # Loop controls
+        self.loop_btn = QPushButton("🔁 Loop")
+        self.loop_btn.setCheckable(True)
+        self.loop_btn.setMinimumWidth(70)
+        self.loop_btn.setToolTip("Enable looping playback")
+        layout.addWidget(self.loop_btn)
+        
         layout.addStretch()
         
         # Volume
@@ -375,6 +384,7 @@ class MainWindow(QMainWindow):
         self.transport.play_btn.clicked.connect(self._toggle_playback)
         self.transport.stop_btn.clicked.connect(self._stop_playback)
         self.transport.clear_btn.clicked.connect(self._clear_all)
+        self.transport.loop_btn.clicked.connect(self._toggle_loop)
         self.transport.time_slider.valueChanged.connect(self._seek)
         self.transport.volume_slider.valueChanged.connect(self._set_volume)
         
@@ -440,6 +450,21 @@ class MainWindow(QMainWindow):
     def _set_volume(self, value: int) -> None:
         """Set master volume."""
         self.synthesizer.master_volume = value / 100.0
+    
+    def _toggle_loop(self) -> None:
+        """Toggle loop playback."""
+        page = self.project.get_active_page()
+        if page:
+            page.settings.loop_enabled = self.transport.loop_btn.isChecked()
+            # Set loop to cover all arcs (or full duration if no arcs)
+            if page.total_duration > 0:
+                page.settings.loop_start = 0.0
+                page.settings.loop_end = page.total_duration
+            else:
+                page.settings.loop_end = page.settings.duration
+            
+            status = "enabled" if page.settings.loop_enabled else "disabled"
+            self.status_bar.showMessage(f"Loop {status}")
     
     def _update_playback_position(self) -> None:
         """Update UI with current playback position."""

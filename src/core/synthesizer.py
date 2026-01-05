@@ -378,10 +378,13 @@ class Synthesizer:
         # Update time
         self.current_time += frames / self.sample_rate
         
-        # Check if we've passed the end of all arcs
-        total_duration = self.page.total_duration
-        if total_duration > 0 and self.current_time > total_duration:
+        # Check if we've passed the end of the loop/arcs
+        loop_end = self.page.settings.loop_end if self.page.settings.loop_enabled else self.page.total_duration
+        if loop_end > 0 and self.current_time > loop_end:
             if self.page.settings.loop_enabled:
+                # Reset all voices for clean loop
+                for voice in self.voices:
+                    voice.reset()
                 self.current_time = self.page.settings.loop_start
                 self._assign_voices()
             else:
