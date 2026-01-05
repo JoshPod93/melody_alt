@@ -322,6 +322,24 @@ class Synthesizer:
                     arc_to_voice[arc.id] = voice
                     break
         
+        # Also assign voices to muted arcs that are used as modulators
+        # (they need to be rendered even if not heard directly)
+        for arc in self.page.arcs.values():
+            if arc.muted and arc.id not in arc_to_voice:
+                # Check if this muted arc is used as a modulator
+                is_modulator = any(
+                    other.modulator_id == arc.id 
+                    for other in active_arcs
+                )
+                if is_modulator:
+                    for voice in self.voices:
+                        if not voice.active:
+                            waveform = self.waveforms.get(arc.waveform_name) or Waveform.sine()
+                            envelope = self.envelopes.get(arc.envelope_name) or Envelope.adsr()
+                            voice.start(arc, waveform, envelope, freq_table)
+                            arc_to_voice[arc.id] = voice
+                            break
+        
         # Set up modulation connections
         for arc in active_arcs:
             if arc.modulator_id and arc.id in arc_to_voice:

@@ -642,9 +642,12 @@ class MainWindow(QMainWindow):
             modulator = page.get_arc(modulator_id)
             if carrier and modulator:
                 carrier.modulator_id = modulator_id
+                # Set a default mod index if it's 0
+                if carrier.modulation_index == 0:
+                    carrier.modulation_index = 2.0  # Audible default
                 self.arc_properties.set_arc(carrier, page)  # Refresh panel
                 self.canvas.update()
-                self.status_bar.showMessage(f"Linked: {modulator.name} → {carrier.name}")
+                self.status_bar.showMessage(f"Linked: {modulator.name} → {carrier.name} (Mod Index: {carrier.modulation_index})")
     
     def closeEvent(self, event) -> None:
         """Handle window close."""
