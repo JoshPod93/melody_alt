@@ -5,6 +5,61 @@
 
 ---
 
+## ⚠️ CRITICAL DESIGN CONTEXT: BCI Accessibility
+
+**This project is intended for Brain-Computer Interface (BCI) music users.**
+
+### Core Principle
+Not all users will have high-resolution cursor control. Some BCI control signals may be:
+- **Low spatial resolution** (can't draw precise curves)
+- **Low temporal resolution** (slow updates, latency)
+- **Binary or discrete** (select from options, not continuous movement)
+- **Single-switch** (one signal, like a blink or thought)
+- **Multi-class but limited** (e.g., 4 directions + select)
+
+### Design Implications
+
+**Every feature must consider:**
+1. Can this work with a 4-direction joystick + select button?
+2. Can this work with single-switch scanning?
+3. Can this work with eye gaze (dwell-click)?
+4. Can this work with low-resolution head tracking?
+5. Is there a "coarse" alternative to fine motor actions?
+
+**Avoid requiring:**
+- Precise cursor positioning
+- Fast, continuous mouse movement
+- Click-and-drag (hard for many BCI users)
+- Small click targets
+- Time-pressure interactions
+
+**Prefer:**
+- Large click/selection targets
+- Discrete choices (menus, palettes)
+- Step-by-step workflows
+- Undo-friendly actions
+- Auto-assist features (snap, quantize, templates)
+
+### Input Abstraction Layer (Future)
+Create an abstraction so the app can receive input from:
+- Mouse/trackpad (current)
+- Keyboard-only navigation
+- Gamepad/joystick
+- Eye tracker (Tobii, etc.)
+- BCI systems (OpenBCI, Emotiv, etc.)
+- OSC/MIDI control signals
+- Custom accessibility switches
+
+```python
+class InputAdapter:
+    """Abstract input source for BCI compatibility."""
+    def get_position(self) -> Tuple[float, float]: ...
+    def is_selecting(self) -> bool: ...
+    def get_discrete_command(self) -> Optional[str]: ...  # "up", "down", "select", etc.
+```
+
+---
+
 ## 1. Visual Distinction for Carrier vs Modulator Arcs
 
 **Priority:** High  
@@ -265,7 +320,173 @@ def apply_gate(samples, current_time, rhythm_settings):
 
 ---
 
-## 7. Other Ideas for Future
+## 7. VST/Plugin Host Integration
+
+**Priority:** Medium  
+**Status:** Exploration
+
+### Concept
+Route audio through VST/AU plugins for effects processing (reverb, delay, filters, etc.)
+
+### Options
+
+#### Option A: External DAW Routing
+- Output audio via virtual audio cable (VB-Cable, BlackHole, JACK)
+- User loads effects in their DAW
+- Pros: Full plugin compatibility, user's existing setup
+- Cons: Requires external software setup
+
+#### Option B: Embedded Plugin Host
+- Use `pedalboard` library (Spotify's Python VST host)
+- Load VST3/AU plugins directly in app
+- Pros: Self-contained, integrated
+- Cons: Complex, potential compatibility issues
+
+#### Option C: Built-in Effects
+- Implement common effects natively (reverb, delay, filter, distortion)
+- No external dependencies
+- Pros: Simple, portable, BCI-friendly (no complex plugin UIs)
+- Cons: Limited to what we build
+
+### Recommended Approach
+1. Start with **Option A** (virtual audio routing) - works now
+2. Add **Option C** (built-in effects) - accessible UI
+3. Consider **Option B** later for power users
+
+### BCI Consideration
+Plugin UIs are often inaccessible. Built-in effects with large, simple controls are better for BCI users.
+
+---
+
+## 8. BCI-Friendly Alternative Input Modes
+
+**Priority:** CRITICAL  
+**Status:** Planned
+
+### Problem
+Current interface requires:
+- Click and drag to draw (hard for BCI)
+- Precise cursor positioning
+- Continuous mouse movement
+
+### Solution: Multiple Drawing Modes
+
+#### Mode A: Template/Stamp Mode
+- Pre-made arc shapes (line, curve, zigzag, wave)
+- Click to place, resize with simple controls
+- BCI-friendly: Select template → Place → Adjust
+
+```
+[Templates]
+[━━━] Horizontal line
+[╱╲╱] Zigzag
+[∿∿∿] Sine wave  
+[╱━━] Ramp up
+[━━╲] Ramp down
+[⌒⌒] Arc/curve
+```
+
+#### Mode B: Point-by-Point Mode
+- Click to place points, system connects them
+- No dragging required
+- Adjustable interpolation (linear, smooth, stepped)
+- BCI-friendly: Click → Click → Click → Done
+
+#### Mode C: Grid/Step Sequencer Mode
+- Divide canvas into large clickable cells
+- Click cell to toggle note on/off
+- Like a piano roll with big buttons
+- BCI-friendly: Large targets, no precision needed
+
+#### Mode D: Gesture Recognition
+- Draw rough shape, system recognizes intent
+- "That looks like an ascending line" → Creates clean arc
+- Tolerant of imprecise input
+- BCI-friendly: Approximate input → Clean output
+
+#### Mode E: Scanning Mode (Single-Switch)
+- Highlight rows/columns sequentially
+- User activates switch when desired option is highlighted
+- Standard accessibility pattern
+- BCI-friendly: Works with single binary signal
+
+#### Mode F: Voice/Sound Control (Future)
+- Hum pitch to draw pitch
+- Duration of sound = arc length
+- "Higher" / "Lower" voice commands
+- BCI-adjacent: Uses vocalization, not motor control
+
+### UI Adaptation
+- "Accessibility Mode" toggle in settings
+- Enlarges all UI elements
+- Simplifies toolbar to essential functions
+- Enables scanning navigation
+
+### Dwell-Click Support
+- Hover over button for X seconds = click
+- Configurable dwell time
+- Visual feedback (filling circle)
+- Essential for eye-gaze users
+
+---
+
+## 9. Control Signal Integration
+
+**Priority:** High  
+**Status:** Planned
+
+### Concept
+Accept control signals from external sources beyond mouse.
+
+### Supported Inputs (Planned)
+
+#### OSC (Open Sound Control)
+- Standard protocol for music/art software
+- Many BCI systems can output OSC
+- `/upic/cursor/x` `/upic/cursor/y` `/upic/select`
+
+#### MIDI
+- MIDI CC for continuous control
+- MIDI notes for discrete actions
+- Works with many adaptive controllers
+
+#### LSL (Lab Streaming Layer)
+- Standard for BCI data streaming
+- Used by OpenBCI, Emotiv, g.tec, etc.
+- Direct brain signal integration
+
+#### WebSocket/HTTP API
+- For custom integrations
+- Web-based BCI interfaces
+- Remote control
+
+### Configuration
+```yaml
+# input_config.yaml
+input_sources:
+  - type: mouse
+    enabled: true
+  
+  - type: osc
+    enabled: true
+    port: 9000
+    mappings:
+      cursor_x: /bci/cursor/x
+      cursor_y: /bci/cursor/y
+      select: /bci/select
+      
+  - type: lsl
+    enabled: false
+    stream_name: "OpenBCI_EEG"
+    
+  - type: midi
+    enabled: false
+    device: "Adaptive Controller"
+```
+
+---
+
+## 10. Other Ideas for Future
 
 ### Quick Wins
 - Keyboard shortcuts for common actions (mute = M, solo = S)
