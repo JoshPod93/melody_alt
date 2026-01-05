@@ -233,6 +233,10 @@ class Page:
     def __len__(self) -> int:
         return len(self.arcs)
     
+    def __bool__(self) -> bool:
+        """Page is always truthy (even if empty)."""
+        return True
+    
     # Undo/Redo support
     def save_state(self) -> None:
         """Save current state for undo."""

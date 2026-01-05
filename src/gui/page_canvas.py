@@ -315,13 +315,11 @@ class PageCanvas(QWidget):
             elif self.current_tool in ("draw", "line"):
                 # Start drawing
                 if self.page is None:
-                    print("Warning: No page set, cannot draw!")
                     return
                 self.is_drawing = True
                 time, pitch = self.transform.point_to_data(pos)
                 pitch = max(0, min(1, pitch))  # Clamp pitch
                 self.drawing_points = [(time, pitch)]
-                print(f"Started drawing at time={time:.2f}, pitch={pitch:.2f}")
             
             elif self.current_tool == "erase":
                 # Erase arc under cursor
@@ -412,20 +410,12 @@ class PageCanvas(QWidget):
                 )
                 arc.set_points_from_tuples(self.drawing_points)
                 
-                # Debug: print arc info
-                print(f"Creating arc: {arc.name}, points: {len(arc.points)}, "
-                      f"time: {arc.start_time:.2f}-{arc.end_time:.2f}, "
-                      f"pitch: {arc.min_pitch:.2f}-{arc.max_pitch:.2f}")
-                
                 if self.page.add_arc(arc):
-                    print(f"Arc added successfully. Total arcs: {len(self.page.arcs)}")
                     self.arc_created.emit(arc.id)
                     
                     # Select the new arc
                     self.selected_arc_ids = [arc.id]
                     self.selection_changed.emit(self.selected_arc_ids)
-                else:
-                    print("Failed to add arc!")
             
             if self.selection_rect is not None:
                 # Select arcs in rectangle
