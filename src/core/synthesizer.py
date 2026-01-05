@@ -172,7 +172,7 @@ class Synthesizer:
         num_voices: Maximum number of simultaneous voices
     """
     sample_rate: int = 44100
-    buffer_size: int = 1024
+    buffer_size: int = 2048  # Larger buffer to prevent audio glitches
     num_voices: int = 64
     
     # Libraries

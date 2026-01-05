@@ -311,6 +311,11 @@ class MainWindow(QMainWindow):
         delete_action.triggered.connect(self._delete_selected)
         edit_menu.addAction(delete_action)
         
+        clear_action = QAction("&Clear All", self)
+        clear_action.setShortcut(QKeySequence("Ctrl+Shift+Delete"))
+        clear_action.triggered.connect(self._clear_all)
+        edit_menu.addAction(clear_action)
+        
         # View menu
         view_menu = menubar.addMenu("&View")
         
@@ -513,6 +518,21 @@ class MainWindow(QMainWindow):
     def _delete_selected(self) -> None:
         """Delete selected arcs."""
         self.canvas.delete_selected()
+    
+    def _clear_all(self) -> None:
+        """Clear all arcs from the page."""
+        page = self.project.get_active_page()
+        if page and len(page.arcs) > 0:
+            reply = QMessageBox.question(
+                self, "Clear All",
+                f"Delete all {len(page.arcs)} arcs? This cannot be undone.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                page.clear()
+                self.canvas.selected_arc_ids.clear()
+                self.canvas.update()
+                self.status_bar.showMessage("Cleared all arcs")
     
     def _edit_waveforms(self) -> None:
         """Open waveform editor dialog."""
