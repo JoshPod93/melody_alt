@@ -220,17 +220,27 @@ class Synthesizer:
         self.playing = True
         self._stop_event.clear()
         
+        # Debug info
+        if self.page:
+            print(f"Starting playback at {start_time:.2f}s")
+            print(f"Page has {len(self.page.arcs)} arcs")
+            for arc in self.page.arcs.values():
+                print(f"  Arc '{arc.name}': {arc.start_time:.2f}-{arc.end_time:.2f}s, "
+                      f"waveform={arc.waveform_name}, envelope={arc.envelope_name}")
+        
         # Assign arcs to voices
         self._assign_voices()
         
-        # Start audio stream
+        # Start audio stream with explicit dtype
         self._stream = sd.OutputStream(
             samplerate=self.sample_rate,
             channels=2,
             blocksize=self.buffer_size,
+            dtype='float32',
             callback=self._audio_callback
         )
         self._stream.start()
+        print("Audio stream started")
     
     def stop(self) -> None:
         """Stop playback."""
@@ -322,6 +332,10 @@ class Synthesizer:
             outdata.fill(0)
             return
         
+        # Re-assign voices each callback to catch new arcs
+        # This is simple but ensures we always have the latest arcs
+        self._assign_voices()
+        
         # Mix all active voices
         mixed = np.zeros(frames)
         active_count = 0
@@ -336,25 +350,23 @@ class Synthesizer:
                 mixed += samples
                 active_count += 1
         
-        # Normalize to prevent clipping
-        if active_count > 0:
-            mixed = mixed / max(active_count, 1)
-        
-        # Apply master volume
+        # Don't normalize - just mix and apply volume
+        # Normalization was causing issues with single voices
         mixed = mixed * self.master_volume
         
         # Clip to valid range
         mixed = np.clip(mixed, -1, 1)
         
-        # Output as stereo
-        outdata[:, 0] = mixed
-        outdata[:, 1] = mixed
+        # Output as stereo (ensure float32 for sounddevice)
+        outdata[:, 0] = mixed.astype(np.float32)
+        outdata[:, 1] = mixed.astype(np.float32)
         
         # Update time
         self.current_time += frames / self.sample_rate
         
         # Check if we've passed the end of all arcs
-        if self.current_time > self.page.total_duration:
+        total_duration = self.page.total_duration
+        if total_duration > 0 and self.current_time > total_duration:
             if self.page.settings.loop_enabled:
                 self.current_time = self.page.settings.loop_start
                 self._assign_voices()

@@ -113,7 +113,7 @@ class ToolBar(QToolBar):
         # Selection tool
         self.select_action = QAction("Select", self)
         self.select_action.setCheckable(True)
-        self.select_action.setChecked(True)
+        self.select_action.setChecked(False)
         self.select_action.setShortcut(QKeySequence("V"))
         self.select_action.setToolTip("Select and move arcs (V)")
         self.addAction(self.select_action)
@@ -121,6 +121,7 @@ class ToolBar(QToolBar):
         # Draw tool
         self.draw_action = QAction("Draw", self)
         self.draw_action.setCheckable(True)
+        self.draw_action.setChecked(True)  # Start in draw mode
         self.draw_action.setShortcut(QKeySequence("D"))
         self.draw_action.setToolTip("Draw new arcs (D)")
         self.addAction(self.draw_action)
@@ -399,13 +400,11 @@ class MainWindow(QMainWindow):
             self.transport.play_btn.setText("▶ Play")
             self.transport.play_btn.setChecked(False)
         else:
-            if self.transport.play_btn.isChecked():
-                self.synthesizer.play(self.synthesizer.current_time)
-                self.transport.play_btn.setText("⏸ Pause")
-            else:
-                self.synthesizer.resume()
-                self.transport.play_btn.setText("⏸ Pause")
-                self.transport.play_btn.setChecked(True)
+            # Always start fresh playback from current position
+            print(f"Starting playback from {self.synthesizer.current_time:.2f}s")
+            self.synthesizer.play(self.synthesizer.current_time)
+            self.transport.play_btn.setText("⏸ Pause")
+            self.transport.play_btn.setChecked(True)
     
     def _stop_playback(self) -> None:
         """Stop playback and reset to beginning."""
