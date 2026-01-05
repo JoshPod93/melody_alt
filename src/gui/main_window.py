@@ -56,6 +56,15 @@ class TransportBar(QWidget):
         self.stop_btn.setMinimumWidth(80)
         layout.addWidget(self.stop_btn)
         
+        layout.addSpacing(20)
+        
+        # Clear All button
+        self.clear_btn = QPushButton("🗑 Clear All")
+        self.clear_btn.setMinimumWidth(90)
+        layout.addWidget(self.clear_btn)
+        
+        layout.addSpacing(20)
+        
         # Time display
         self.time_label = QLabel("0:00.000")
         self.time_label.setMinimumWidth(80)
@@ -365,6 +374,7 @@ class MainWindow(QMainWindow):
         # Transport
         self.transport.play_btn.clicked.connect(self._toggle_playback)
         self.transport.stop_btn.clicked.connect(self._stop_playback)
+        self.transport.clear_btn.clicked.connect(self._clear_all)
         self.transport.time_slider.valueChanged.connect(self._seek)
         self.transport.volume_slider.valueChanged.connect(self._set_volume)
         
