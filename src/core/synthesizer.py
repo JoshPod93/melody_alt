@@ -281,34 +281,46 @@ class Synthesizer:
         if self.page is None:
             return
         
-        # Reset all voices
-        for voice in self.voices:
-            voice.reset()
-        
         # Get active arcs
         active_arcs = self.page.get_active_arcs()
+        active_arc_ids = {arc.id for arc in active_arcs}
         
         # Get default frequency table
         freq_table = self.frequency_tables.get(
             self.page.settings.frequency_table_name
         ) or self.frequency_tables.get("Continuous")
         
-        # Assign arcs to voices
-        voice_idx = 0
+        # Track which arcs already have voices (don't reset them!)
+        existing_arc_ids = set()
+        for voice in self.voices:
+            if voice.active and voice.arc is not None:
+                if voice.arc.id in active_arc_ids:
+                    existing_arc_ids.add(voice.arc.id)
+                else:
+                    # Arc is no longer active, reset this voice
+                    voice.reset()
+        
+        # Find arcs that need new voices
+        new_arcs = [arc for arc in active_arcs if arc.id not in existing_arc_ids]
+        
+        # Find available voices for new arcs
         arc_to_voice: Dict[str, Voice] = {}
         
-        for arc in active_arcs:
-            if voice_idx >= self.num_voices:
-                break
-            
-            # Get waveform and envelope
-            waveform = self.waveforms.get(arc.waveform_name) or Waveform.sine()
-            envelope = self.envelopes.get(arc.envelope_name) or Envelope.adsr()
-            
-            voice = self.voices[voice_idx]
-            voice.start(arc, waveform, envelope, freq_table)
-            arc_to_voice[arc.id] = voice
-            voice_idx += 1
+        # First, map existing voices
+        for voice in self.voices:
+            if voice.active and voice.arc is not None:
+                arc_to_voice[voice.arc.id] = voice
+        
+        # Assign new arcs to available voices
+        for arc in new_arcs:
+            # Find a free voice
+            for voice in self.voices:
+                if not voice.active:
+                    waveform = self.waveforms.get(arc.waveform_name) or Waveform.sine()
+                    envelope = self.envelopes.get(arc.envelope_name) or Envelope.adsr()
+                    voice.start(arc, waveform, envelope, freq_table)
+                    arc_to_voice[arc.id] = voice
+                    break
         
         # Set up modulation connections
         for arc in active_arcs:
@@ -332,8 +344,7 @@ class Synthesizer:
             outdata.fill(0)
             return
         
-        # Re-assign voices each callback to catch new arcs
-        # This is simple but ensures we always have the latest arcs
+        # Update voice assignments (preserves phase for existing voices)
         self._assign_voices()
         
         # Mix all active voices
