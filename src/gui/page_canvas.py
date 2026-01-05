@@ -398,8 +398,7 @@ class PageCanvas(QWidget):
         """Handle mouse release."""
         if event.button() == Qt.MouseButton.LeftButton:
             if self.is_drawing and self.page and len(self.drawing_points) >= 2:
-                # Sort points by time to ensure proper order
-                self.drawing_points.sort(key=lambda p: p[0])
+                # Keep points in drawing order (don't sort - allows circles/loops)
                 
                 # Create new arc
                 self.page.save_state()

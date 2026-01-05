@@ -108,13 +108,11 @@ class Arc:
     def add_point(self, time: float, pitch: float) -> None:
         """Add a point to the arc."""
         self.points.append(ArcPoint(time=time, pitch=pitch))
-        # Keep points sorted by time
-        self.points.sort(key=lambda p: p.time)
     
     def set_points_from_tuples(self, points: List[Tuple[float, float]]) -> None:
         """Set points from a list of (time, pitch) tuples."""
+        # Keep points in original order (allows circles/loops)
         self.points = [ArcPoint.from_tuple(p) for p in points]
-        self.points.sort(key=lambda p: p.time)
     
     def get_points_as_tuples(self) -> List[Tuple[float, float]]:
         """Get points as a list of (time, pitch) tuples."""
