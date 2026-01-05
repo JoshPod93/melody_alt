@@ -55,6 +55,8 @@ class Voice:
         self.phase = 0.0
         self.active = False
         self.arc = None
+        self.modulator_voice = None
+        self._rendering = False
     
     def start(
         self,
@@ -70,6 +72,9 @@ class Voice:
         self.frequency_table = frequency_table
         self.phase = 0.0
         self.active = True
+    
+    # Track rendering to prevent recursion
+    _rendering: bool = False
     
     def render(
         self,
@@ -88,6 +93,10 @@ class Voice:
         Returns:
             Array of audio samples
         """
+        # Prevent infinite recursion from circular modulation
+        if self._rendering:
+            return np.zeros(num_samples)
+        
         if not self.active or self.arc is None:
             return np.zeros(num_samples)
         
@@ -101,6 +110,9 @@ class Voice:
         
         if current_time + num_samples / sample_rate < self.arc.start_time:
             return np.zeros(num_samples)
+        
+        # Mark as rendering to prevent recursion
+        self._rendering = True
         
         # Generate time array for this buffer
         times = current_time + np.arange(num_samples) / sample_rate
@@ -155,6 +167,9 @@ class Voice:
         # Zero out samples outside arc time range
         mask = (times >= self.arc.start_time) & (times <= self.arc.end_time)
         samples = samples * mask
+        
+        # Done rendering
+        self._rendering = False
         
         return samples
 
