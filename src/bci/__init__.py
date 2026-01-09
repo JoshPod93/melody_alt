@@ -28,6 +28,13 @@ except ImportError:
     LSLMarkerSender = None
     UnicornInterface = None
 
+# Direct Unicorn streaming (optional)
+try:
+    from .unicorn_streamer import UnicornLSLStreamer, UNICORN_AVAILABLE
+except ImportError:
+    UNICORN_AVAILABLE = False
+    UnicornLSLStreamer = None
+
 __all__ = [
     # Stimulus
     'SSVEPStimulus',
@@ -50,4 +57,7 @@ __all__ = [
     'LSLReceiver',
     'LSLMarkerSender',
     'UnicornInterface',
+    # Unicorn Direct
+    'UNICORN_AVAILABLE',
+    'UnicornLSLStreamer',
 ]
