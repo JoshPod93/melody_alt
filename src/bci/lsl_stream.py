@@ -30,13 +30,15 @@ except ImportError:
 
 
 # g.tec Unicorn Black channel configuration
-UNICORN_CHANNELS = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
+UNICORN_EEG_CHANNELS = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
 UNICORN_SAMPLE_RATE = 250  # Hz
-UNICORN_N_CHANNELS = 8
+UNICORN_N_EEG_CHANNELS = 8
+UNICORN_N_TOTAL_CHANNELS = 17  # When streaming all signals
 
-# Occipital channels (best for SSVEP)
-OCCIPITAL_CHANNELS = ['PO7', 'Oz', 'PO8']
-OCCIPITAL_INDICES = [5, 6, 7]  # Indices in Unicorn channel order
+# Channel indices
+UNICORN_EEG_INDICES = list(range(8))  # First 8 channels are EEG
+OCCIPITAL_INDICES = [5, 6, 7]  # PO7, Oz, PO8 - best for SSVEP
+
 
 
 @dataclass
@@ -379,6 +381,28 @@ class LSLReceiver:
             return buffer
         return buffer[-n_samples:]
     
+    def get_eeg_data(self, seconds: float = 1.0) -> NDArray:
+        """
+        Get recent EEG data only (first 8 channels).
+        
+        Handles both 8-channel and 17-channel Unicorn streams.
+        
+        Args:
+            seconds: Number of seconds
+            
+        Returns:
+            Array of shape (n_samples, 8) for EEG channels only
+        """
+        data = self.get_recent_data(seconds)
+        
+        if len(data) == 0:
+            return data
+        
+        # Extract only EEG channels (first 8)
+        if data.shape[1] > UNICORN_N_EEG_CHANNELS:
+            return data[:, UNICORN_EEG_INDICES]
+        return data
+    
     def get_occipital_data(self, seconds: float = 1.0) -> NDArray:
         """
         Get recent data from occipital channels only (best for SSVEP).
@@ -389,15 +413,13 @@ class LSLReceiver:
         Returns:
             Array of shape (n_samples, 3) for PO7, Oz, PO8
         """
-        data = self.get_recent_data(seconds)
+        data = self.get_eeg_data(seconds)
         
         if len(data) == 0:
             return data
         
-        # Extract occipital channels
-        if self.n_channels >= 8:
-            return data[:, OCCIPITAL_INDICES]
-        return data
+        # Extract occipital channels from EEG data
+        return data[:, OCCIPITAL_INDICES]
 
 
 @dataclass

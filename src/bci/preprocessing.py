@@ -468,11 +468,13 @@ class LSLPreprocessor(EEGPreprocessor):
         """
         Pull data from LSL and process it.
         
+        Handles 17-channel Unicorn streams by extracting only EEG channels.
+        
         Args:
             n_samples: Number of samples to pull
             
         Returns:
-            Processed EEG data
+            Processed EEG data (8 channels)
         """
         if not self.is_lsl_connected:
             return np.array([])
@@ -482,6 +484,10 @@ class LSLPreprocessor(EEGPreprocessor):
         
         if len(samples) == 0:
             return np.array([])
+        
+        # Extract only EEG channels if we have more (17-channel Unicorn stream)
+        if samples.shape[1] > self.n_channels:
+            samples = samples[:, :self.n_channels]  # Take first 8 channels (EEG)
         
         # Process
         return self.process_chunk(samples)
