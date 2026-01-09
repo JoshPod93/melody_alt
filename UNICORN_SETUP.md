@@ -1,73 +1,94 @@
 # g.tec Unicorn Black Setup Guide
 
-## Option 1: Python-Native Streaming (Recommended for Hackathon)
+> **Note**: g.Pype (g.tec's official Python SDK) does NOT yet support Unicorn Black directly.
+> Unicorn support is "planned for upcoming releases" per their FAQ.
+> Use one of the options below instead.
 
-This approach streams directly from Python without the Unicorn Suite GUI.
+## Option 1: Unicorn Suite LSL Interface (Easiest - Recommended)
+
+Use the built-in LSL streaming from Unicorn Suite. No extra code needed.
 
 ### Prerequisites
 
-1. **Install Unicorn Suite** (required for drivers and UnicornPy)
-   - Download from: https://www.gtec.at/product/unicorn-suite/
+1. **Install Unicorn Suite** from g.tec
+   - Download: https://www.gtec.at/product/unicorn-suite/
    - Install with default settings
 
 2. **Pair Unicorn Black via Bluetooth**
-   - Power on the Unicorn Black
-   - Go to Windows Bluetooth settings
-   - Pair the device (PIN: usually 0000 or 1234)
+   - Power on the Unicorn Black (LED blinking)
+   - Windows Settings → Bluetooth → Add device
+   - Pair the device (PIN: usually `0000` or `1234`)
 
-3. **Add UnicornPy to Python Path**
-   
-   The UnicornPy module is installed with Unicorn Suite at:
+### Steps
+
+1. **Open Unicorn Suite**
+2. **Connect to your device** (select from dropdown)
+3. **Go to Apps → LSL Interface**
+4. **Click "Start"** to begin streaming
+5. **In a terminal, run BCI-UPIC:**
+   ```bash
+   conda activate hack
+   python bci_main.py --mode gui
    ```
-   C:\Program Files\gtec\Unicorn Suite\Hybrid Black\Unicorn Python\Lib
-   ```
-   
-   Either:
-   - Copy contents to your conda environment's site-packages, OR
-   - The code auto-detects this path
+6. **Click "Connect LSL"** in the GUI
+
+The stream appears as `UN-XXXX-XXXX` (your device serial).
+
+---
+
+## Option 2: Python-Native Streaming (Advanced)
+
+Stream directly from Python without the Unicorn Suite GUI.
+Useful for programmatic control or running everything from code.
+
+### Prerequisites
+
+1. **Install Unicorn Suite** (required for drivers and UnicornPy module)
+2. **Pair via Bluetooth** (same as Option 1)
+
+### Setup UnicornPy
+
+The UnicornPy module is installed with Unicorn Suite at:
+```
+C:\Program Files\gtec\Unicorn Suite\Hybrid Black\Unicorn Python\Lib
+```
+
+Our code auto-detects this path. If it doesn't work, copy the `Lib` contents to your conda site-packages.
 
 ### Usage
 
+**From Python:**
 ```python
-# Start the streamer
 from src.bci.unicorn_streamer import UnicornLSLStreamer
 
 streamer = UnicornLSLStreamer()
 streamer.start()  # Connects and starts LSL stream
 
 # Your BCI code runs here...
-# The stream is available as "Unicorn" in LSL
+# Stream available as "Unicorn" in LSL
 
-streamer.stop()  # When done
+streamer.stop()
 ```
 
-Or from command line:
+**From command line (two terminals):**
+
+Terminal 1 - Start streamer:
 ```bash
 conda activate hack
 python -m src.bci.unicorn_streamer
 ```
 
-### Check Setup
+Terminal 2 - Run BCI app:
 ```bash
 conda activate hack
-python -c "from src.bci.unicorn_streamer import check_unicorn_setup; check_unicorn_setup()"
+python bci_main.py --mode gui
+# Click "Connect LSL"
 ```
 
----
-
-## Option 2: Unicorn Suite LSL Interface
-
-Use this if you prefer the GUI or need to visualize raw signals.
-
-### Steps
-
-1. **Open Unicorn Suite**
-2. **Connect to your device**
-3. **Go to Apps → LSL Interface**
-4. **Click "Start" to begin streaming**
-5. **Run BCI-UPIC and click "Connect LSL"**
-
-The stream will appear as "UN-XXXX-XXXX" (your device serial).
+### Check Setup
+```bash
+python -c "from src.bci.unicorn_streamer import check_unicorn_setup; check_unicorn_setup()"
+```
 
 ---
 
@@ -119,10 +140,11 @@ For SSVEP (our 15Hz/10Hz paradigm), channels **PO7, Oz, PO8** (indices 5, 6, 7) 
 # 1. Activate environment
 conda activate hack
 
-# 2. Check setup
+# 2. Check setup (shows if UnicornPy is available)
 python -c "from src.bci.unicorn_streamer import check_unicorn_setup; check_unicorn_setup()"
 
-# 3. Start streamer (if using Python-native)
+# 3. Start Unicorn Suite LSL Interface (Option 1)
+#    OR run Python streamer (Option 2):
 python -m src.bci.unicorn_streamer
 
 # 4. In another terminal, run the BCI app
