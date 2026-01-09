@@ -434,9 +434,17 @@ class LSLPreprocessor(EEGPreprocessor):
             if self._lsl_receiver.connect(stream_name):
                 # Update sample rate from stream
                 self.sample_rate = self._lsl_receiver.sample_rate
-                self.n_channels = self._lsl_receiver.n_channels
                 
-                # Reinitialize filters for correct sample rate
+                # Store the actual stream channel count for extraction
+                self._stream_n_channels = self._lsl_receiver.n_channels
+                
+                # ALWAYS use 8 EEG channels for processing (Unicorn sends 17 total)
+                # We'll extract only the first 8 (EEG) channels during pull_and_process
+                self.n_channels = 8  # Force 8 EEG channels
+                
+                print(f"[LSL] Stream has {self._stream_n_channels} channels, using first 8 (EEG)")
+                
+                # Reinitialize filters for correct sample rate and 8 channels
                 self._init_filters()
                 self._init_buffer()
                 
@@ -485,9 +493,9 @@ class LSLPreprocessor(EEGPreprocessor):
         if len(samples) == 0:
             return np.array([])
         
-        # Extract only EEG channels if we have more (17-channel Unicorn stream)
-        if samples.shape[1] > self.n_channels:
-            samples = samples[:, :self.n_channels]  # Take first 8 channels (EEG)
+        # ALWAYS extract first 8 EEG channels (Unicorn sends 17 total: 8 EEG + 9 aux)
+        if samples.shape[1] > 8:
+            samples = samples[:, :8]  # Take first 8 channels (EEG only)
         
         # Process
         return self.process_chunk(samples)
@@ -510,6 +518,10 @@ class LSLPreprocessor(EEGPreprocessor):
         
         if len(raw_data) == 0:
             return np.array([])
+        
+        # ALWAYS extract first 8 EEG channels (Unicorn sends 17 total)
+        if raw_data.shape[1] > 8:
+            raw_data = raw_data[:, :8]
         
         # Process the chunk
         return self.process_chunk(raw_data)

@@ -54,11 +54,11 @@ class BCICursorController:
         smoothing: Amount of smoothing for vertical movement (0-1)
     """
     duration: float = 10.0
-    vertical_speed: float = 0.15  # Pitch units per second at full confidence
+    vertical_speed: float = 0.5  # MUCH FASTER - big jumps!
     pitch_min: float = 0.0
     pitch_max: float = 1.0
     start_pitch: float = 0.5
-    smoothing: float = 0.3  # Exponential smoothing factor
+    smoothing: float = 0.5  # More smoothing to reduce jitter
     
     # Current state
     _state: ControllerState = field(default=ControllerState.IDLE, repr=False)

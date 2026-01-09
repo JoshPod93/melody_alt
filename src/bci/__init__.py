@@ -18,6 +18,7 @@ from .preprocessing import EEGPreprocessor, LSLPreprocessor, SimulatedEEGSource
 from .classifier import SSVEPClassifier, AttentionTarget, ClassificationResult
 from .controller import BCICursorController, ControllerState
 from .score import BCIScore
+from .calibration import CalibrationData, CalibrationSession
 
 # LSL components (optional)
 try:
@@ -52,6 +53,9 @@ __all__ = [
     'ControllerState',
     # Score
     'BCIScore',
+    # Calibration
+    'CalibrationData',
+    'CalibrationSession',
     # LSL
     'LSL_AVAILABLE',
     'LSLReceiver',

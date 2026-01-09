@@ -14,10 +14,13 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 from dataclasses import dataclass, field
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, TYPE_CHECKING
 from scipy import signal
 from scipy.linalg import eig
 from enum import Enum
+
+if TYPE_CHECKING:
+    from .calibration import CalibrationData
 
 
 class AttentionTarget(Enum):
@@ -53,42 +56,111 @@ class SSVEPClassifier:
         threshold: Confidence threshold for making a decision
         occipital_channels: Indices of occipital channels (best for SSVEP)
     """
-    sample_rate: float = 256.0
+    sample_rate: float = 250.0  # Unicorn Black sample rate
     target_frequencies: Tuple[float, float] = (15.0, 10.0)  # (up, down)
-    window_seconds: float = 1.0
+    target_phases: Tuple[float, float] = (0.0, np.pi)  # Phase offsets matching stimulus!
+    window_seconds: float = 0.5  # Shorter window for faster response
     n_harmonics: int = 2  # Include fundamental + 1 harmonic
-    threshold: float = 0.3  # Minimum confidence to make a decision
-    occipital_channels: List[int] = field(default_factory=lambda: [6, 7])  # O1, O2
+    threshold: float = 0.05  # Very low threshold - almost always move
+    occipital_channels: List[int] = field(default_factory=lambda: [5, 6, 7])  # PO7, Oz, PO8
     
-    # CCA reference signals (precomputed)
+    # CCA reference signals - can be from calibration or synthetic
     _ref_signals_up: NDArray[np.float64] = field(init=False, repr=False)
     _ref_signals_down: NDArray[np.float64] = field(init=False, repr=False)
+    _using_calibration: bool = field(default=False, repr=False)
     
     # Smoothing for temporal stability
     _history: List[ClassificationResult] = field(default_factory=list, repr=False)
-    _history_size: int = 5
+    _history_size: int = 3  # Reduced for faster response
     
     def __post_init__(self) -> None:
         """Initialize reference signals for CCA."""
         self._generate_reference_signals()
     
+    def load_calibration(self, calibration_data: 'CalibrationData') -> bool:
+        """
+        Load personalized reference signals from calibration data.
+        
+        This replaces synthetic references with real SSVEP templates
+        captured from the user's brain responses.
+        
+        Args:
+            calibration_data: CalibrationData with recorded SSVEP responses
+            
+        Returns:
+            True if calibration was loaded successfully
+        """
+        try:
+            ref_up, ref_down = calibration_data.get_cca_references(self.window_seconds)
+            
+            if ref_up is not None and ref_down is not None:
+                # Ensure correct shape
+                n_samples = int(self.window_seconds * self.sample_rate)
+                
+                # Resize if needed
+                if len(ref_up) != n_samples:
+                    ref_up = self._resize_reference(ref_up, n_samples)
+                if len(ref_down) != n_samples:
+                    ref_down = self._resize_reference(ref_down, n_samples)
+                
+                self._ref_signals_up = ref_up
+                self._ref_signals_down = ref_down
+                self._using_calibration = True
+                
+                print(f"Loaded calibration: UP={ref_up.shape}, DOWN={ref_down.shape}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"Failed to load calibration: {e}")
+            return False
+    
+    def _resize_reference(self, ref: NDArray, target_samples: int) -> NDArray:
+        """Resize reference signal to match target sample count."""
+        if len(ref) == target_samples:
+            return ref
+        
+        # Use interpolation to resize
+        old_indices = np.linspace(0, 1, len(ref))
+        new_indices = np.linspace(0, 1, target_samples)
+        
+        if ref.ndim == 1:
+            return np.interp(new_indices, old_indices, ref)
+        else:
+            # Multi-channel
+            result = np.zeros((target_samples, ref.shape[1]))
+            for ch in range(ref.shape[1]):
+                result[:, ch] = np.interp(new_indices, old_indices, ref[:, ch])
+            return result
+    
+    @property
+    def is_calibrated(self) -> bool:
+        """Check if using calibration data."""
+        return self._using_calibration
+    
     def _generate_reference_signals(self) -> None:
         """
-        Generate reference signals for CCA.
+        Generate reference signals for CCA that MATCH the visual stimulus.
         
-        Reference signals are sine and cosine waves at the target
-        frequencies and their harmonics.
+        The reference signals must have the same frequency AND phase as
+        the flickering targets to maximize correlation with the SSVEP response.
+        
+        Visual stimulus uses: sin(2π * f * t + phase)
+        - 15Hz (up): phase = 0
+        - 10Hz (down): phase = π (180°)
         """
         n_samples = int(self.window_seconds * self.sample_rate)
         t = np.arange(n_samples) / self.sample_rate
         
-        # Reference signals for each target frequency
-        for freq_idx, freq in enumerate(self.target_frequencies):
+        # Reference signals for each target frequency WITH MATCHING PHASE
+        for freq_idx, (freq, phase) in enumerate(zip(self.target_frequencies, self.target_phases)):
             ref_signals = []
             for h in range(1, self.n_harmonics + 1):
-                # Sine and cosine at each harmonic
-                ref_signals.append(np.sin(2 * np.pi * h * freq * t))
-                ref_signals.append(np.cos(2 * np.pi * h * freq * t))
+                # Sine and cosine at each harmonic WITH PHASE OFFSET
+                # The phase offset propagates to harmonics as h * phase
+                ref_signals.append(np.sin(2 * np.pi * h * freq * t + h * phase))
+                ref_signals.append(np.cos(2 * np.pi * h * freq * t + h * phase))
             
             ref_array = np.array(ref_signals).T  # Shape: (n_samples, 2*n_harmonics)
             
@@ -167,6 +239,7 @@ class SSVEPClassifier:
         Classify using Canonical Correlation Analysis (CCA).
         
         More robust than FFT, better for noisy data.
+        Uses ONLY occipital channels (PO7, Oz, PO8) for SSVEP detection.
         
         Args:
             eeg_data: EEG data of shape (n_samples, n_channels)
@@ -174,7 +247,7 @@ class SSVEPClassifier:
         Returns:
             ClassificationResult
         """
-        # Use occipital channels
+        # CRITICAL: Use ONLY occipital channels for SSVEP
         if eeg_data.shape[1] > max(self.occipital_channels):
             data = eeg_data[:, self.occipital_channels]
         else:
@@ -193,15 +266,29 @@ class SSVEPClassifier:
         corr_up = self._cca_correlation(data, self._ref_signals_up)
         corr_down = self._cca_correlation(data, self._ref_signals_down)
         
-        # Calculate confidence and determine target
-        max_corr = max(corr_up, corr_down)
-        confidence = max_corr
+        # Also compute FFT-based power for comparison
+        fft_result = self.classify_fft(eeg_data)
         
-        ratio = corr_up - corr_down
+        # Combine CCA and FFT evidence
+        # CCA correlation difference
+        cca_diff = corr_up - corr_down
         
-        if confidence < self.threshold:
-            target = AttentionTarget.NONE
-        elif corr_up > corr_down:
+        # FFT power difference (normalized)
+        fft_total = fft_result.power_15hz + fft_result.power_10hz + 1e-10
+        fft_diff = (fft_result.power_15hz - fft_result.power_10hz) / fft_total
+        
+        # Combined score: weight CCA more if calibrated, otherwise equal
+        if self._using_calibration:
+            combined_score = 0.7 * np.sign(cca_diff) * min(abs(cca_diff) * 3, 1) + 0.3 * fft_diff
+        else:
+            combined_score = 0.5 * np.sign(cca_diff) * min(abs(cca_diff) * 3, 1) + 0.5 * fft_diff
+        
+        # Confidence based on agreement and magnitude
+        confidence = min(abs(combined_score) * 2, 1.0)
+        confidence = max(confidence, 0.2)  # Minimum confidence
+        
+        # Direction based on combined score
+        if combined_score >= 0:
             target = AttentionTarget.UP
         else:
             target = AttentionTarget.DOWN
@@ -211,7 +298,7 @@ class SSVEPClassifier:
             confidence=confidence,
             power_15hz=corr_up,
             power_10hz=corr_down,
-            raw_score=ratio
+            raw_score=combined_score
         )
     
     def _cca_correlation(
@@ -288,35 +375,28 @@ class SSVEPClassifier:
     
     def _smooth_result(self, current: ClassificationResult) -> ClassificationResult:
         """
-        Apply temporal smoothing to reduce jitter.
+        Apply minimal smoothing - mostly just pass through current result.
         
-        Uses majority voting over recent classifications.
+        For SSVEP we want fast response, not heavy smoothing.
         """
-        if len(self._history) < 3:
+        # Just return current result with slight confidence boost from history
+        if len(self._history) < 2:
             return current
         
-        # Count votes for each target
-        votes = {AttentionTarget.NONE: 0, AttentionTarget.UP: 0, AttentionTarget.DOWN: 0}
-        total_confidence = 0
-        
-        for result in self._history:
-            votes[result.target] += result.confidence
-            total_confidence += result.confidence
-        
-        # Find winner
-        winner = max(votes, key=votes.get)
-        smoothed_confidence = votes[winner] / total_confidence if total_confidence > 0 else 0
-        
-        # Average the power values
-        avg_15hz = np.mean([r.power_15hz for r in self._history])
-        avg_10hz = np.mean([r.power_10hz for r in self._history])
+        # Light smoothing of raw_score only
         avg_score = np.mean([r.raw_score for r in self._history])
         
+        # If history agrees with current, boost confidence
+        same_direction = sum(1 for r in self._history if r.target == current.target)
+        agreement_ratio = same_direction / len(self._history)
+        
+        boosted_confidence = current.confidence * (0.7 + 0.3 * agreement_ratio)
+        
         return ClassificationResult(
-            target=winner,
-            confidence=smoothed_confidence,
-            power_15hz=avg_15hz,
-            power_10hz=avg_10hz,
+            target=current.target,
+            confidence=min(boosted_confidence, 1.0),
+            power_15hz=current.power_15hz,
+            power_10hz=current.power_10hz,
             raw_score=avg_score
         )
     

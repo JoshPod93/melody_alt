@@ -32,6 +32,7 @@ from .preprocessing import EEGPreprocessor, SimulatedEEGSource, LSLPreprocessor
 from .classifier import SSVEPClassifier, AttentionTarget, ClassificationResult
 from .controller import BCICursorController, ControllerState, CursorPosition
 from .score import BCIScore, play_score, synthesize_score
+from .calibration import CalibrationData, CalibrationSession
 
 try:
     from .lsl_stream import LSLReceiver, LSLMarkerSender, LSL_AVAILABLE
@@ -44,6 +45,7 @@ class SessionMode(Enum):
     IDLE = 0
     COMPOSING = 1
     PLAYBACK = 2
+    CALIBRATING = 3
 
 
 class FlickerWidget(QWidget):
@@ -326,9 +328,21 @@ class BCICompositionWindow(QMainWindow):
     Main window for BCI composition interface.
     """
     
+    # =================================================================
+    # EXPERIMENT MODE FLAG - Set to True for real experiments!
+    # When True: Simulation is DISABLED, LSL connection is REQUIRED
+    # =================================================================
+    EXPERIMENT_MODE = True  # <-- SET THIS TO True FOR REAL EXPERIMENTS
+    # =================================================================
+    
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("BCI-UPIC Composer")
+        
+        if self.EXPERIMENT_MODE:
+            self.setWindowTitle("BCI-UPIC Composer [EXPERIMENT MODE - Real Data Only]")
+        else:
+            self.setWindowTitle("BCI-UPIC Composer [DEV MODE - Simulation Allowed]")
+        
         self.setMinimumSize(1000, 700)
         
         # BCI components
@@ -336,15 +350,18 @@ class BCICompositionWindow(QMainWindow):
         self.classifier = SSVEPClassifier()
         self.controller = BCICursorController(duration=10.0)
         
-        # LSL or simulated EEG
+        # LSL connection state
         self._use_lsl = False
         self._lsl_connected = False
         
         # LSL preprocessor (handles both LSL and simulated)
         self.preprocessor = LSLPreprocessor(sample_rate=250, n_channels=8)
         
-        # Simulated EEG source (for testing without hardware)
-        self.eeg_source = SimulatedEEGSource(sample_rate=250, n_channels=8)
+        # Simulated EEG source - ONLY available in dev mode
+        if not self.EXPERIMENT_MODE:
+            self.eeg_source = SimulatedEEGSource(sample_rate=250, n_channels=8)
+        else:
+            self.eeg_source = None  # Disabled in experiment mode
         
         # Marker sender for LSL
         self.marker_sender = None
@@ -356,6 +373,13 @@ class BCICompositionWindow(QMainWindow):
         
         # Current score
         self.current_score: Optional[BCIScore] = None
+        
+        # Calibration
+        self._calibration_data: Optional[CalibrationData] = None
+        self._calibration_session: Optional[CalibrationSession] = None
+        self._cal_trial_timer: Optional[QTimer] = None
+        self._cal_eeg_buffer: List = []
+        self._cal_timestamp_buffer: List = []
         
         # Session state
         self._mode = SessionMode.IDLE
@@ -474,22 +498,36 @@ class BCICompositionWindow(QMainWindow):
         
         layout.addWidget(playback_group)
         
-        # Test mode
-        test_group = QGroupBox("Test Mode")
-        test_layout = QHBoxLayout(test_group)
+        # Calibration
+        cal_group = QGroupBox("Calibration")
+        cal_layout = QHBoxLayout(cal_group)
         
-        self.random_btn = QPushButton("Random Test")
-        self.random_btn.clicked.connect(self._run_random_test)
-        test_layout.addWidget(self.random_btn)
+        self.calibrate_btn = QPushButton("Calibrate")
+        self.calibrate_btn.clicked.connect(self._start_calibration)
+        self.calibrate_btn.setToolTip("Record your brain's response to each frequency")
+        cal_layout.addWidget(self.calibrate_btn)
         
-        layout.addWidget(test_group)
+        self.cal_status = QLabel("Not calibrated")
+        self.cal_status.setStyleSheet("color: #ff6b6b;")
+        cal_layout.addWidget(self.cal_status)
+        
+        self.load_cal_btn = QPushButton("Load")
+        self.load_cal_btn.clicked.connect(self._load_calibration)
+        self.load_cal_btn.setToolTip("Load saved calibration")
+        cal_layout.addWidget(self.load_cal_btn)
+        
+        layout.addWidget(cal_group)
         
         # LSL Connection
         lsl_group = QGroupBox("EEG Source")
         lsl_layout = QHBoxLayout(lsl_group)
         
-        self.lsl_status = QLabel("Simulated")
-        self.lsl_status.setStyleSheet("color: #ffa500;")  # Orange for simulated
+        if self.EXPERIMENT_MODE:
+            self.lsl_status = QLabel("NOT CONNECTED")
+            self.lsl_status.setStyleSheet("color: #ff4444; font-weight: bold;")  # Red = must connect
+        else:
+            self.lsl_status = QLabel("Simulated (DEV)")
+            self.lsl_status.setStyleSheet("color: #ffa500;")  # Orange for dev mode
         lsl_layout.addWidget(self.lsl_status)
         
         self.connect_lsl_btn = QPushButton("Connect LSL")
@@ -572,6 +610,31 @@ class BCICompositionWindow(QMainWindow):
     
     def _start_composition(self) -> None:
         """Start BCI composition session."""
+        
+        # EXPERIMENT MODE: Require LSL connection and calibration
+        if self.EXPERIMENT_MODE:
+            if not self._lsl_connected:
+                QMessageBox.critical(
+                    self,
+                    "EXPERIMENT MODE - LSL Required",
+                    "EXPERIMENT MODE is enabled.\n\n"
+                    "You MUST connect to a real EEG device via LSL before starting.\n\n"
+                    "Simulated data is DISABLED to ensure data integrity."
+                )
+                return
+            
+            if not self.classifier.is_calibrated:
+                reply = QMessageBox.warning(
+                    self,
+                    "EXPERIMENT MODE - Calibration Recommended",
+                    "EXPERIMENT MODE is enabled but classifier is NOT calibrated.\n\n"
+                    "Calibration is STRONGLY recommended for accurate results.\n\n"
+                    "Continue without calibration?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+        
         self._mode = SessionMode.COMPOSING
         
         # Send marker if LSL available
@@ -604,7 +667,7 @@ class BCICompositionWindow(QMainWindow):
         self.play_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
-        self.random_btn.setEnabled(False)
+        # self.random_btn.setEnabled(False)  # Removed - use calibration instead
         self.duration_spin.setEnabled(False)
         self.waveform_combo.setEnabled(False)
         
@@ -637,7 +700,7 @@ class BCICompositionWindow(QMainWindow):
         # Update UI
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
-        self.random_btn.setEnabled(True)
+        # self.random_btn.setEnabled(True)  # Removed - use calibration instead
         self.duration_spin.setEnabled(True)
         self.waveform_combo.setEnabled(True)
         
@@ -680,17 +743,27 @@ class BCICompositionWindow(QMainWindow):
                 self.lsl_status.setStyleSheet("color: #00ff00;")  # Green
                 self.status_label.setText(f"Connected to {stream_info.name} @ {stream_info.sample_rate}Hz")
             else:
-                self.status_label.setText("No LSL streams found - using simulated EEG")
-                QMessageBox.information(
-                    self,
-                    "LSL Connection",
-                    "No EEG streams found.\n\n"
-                    "Make sure your g.tec Unicorn Black is:\n"
-                    "1. Powered on\n"
-                    "2. Connected via Bluetooth\n"
-                    "3. Streaming via LSL\n\n"
-                    "Using simulated EEG for now."
-                )
+                if self.EXPERIMENT_MODE:
+                    self.status_label.setText("No LSL streams found - CANNOT proceed in experiment mode")
+                    QMessageBox.critical(
+                        self,
+                        "EXPERIMENT MODE - LSL Required",
+                        "No EEG streams found!\n\n"
+                        "EXPERIMENT MODE requires a real EEG connection.\n\n"
+                        "Make sure your g.tec Unicorn Black is:\n"
+                        "1. Powered on and paired via Bluetooth\n"
+                        "2. LSL streaming started in Unicorn Suite\n\n"
+                        "Cannot proceed without real EEG data."
+                    )
+                else:
+                    self.status_label.setText("No LSL streams found - using simulated EEG (DEV MODE)")
+                    QMessageBox.information(
+                        self,
+                        "LSL Connection (DEV MODE)",
+                        "No EEG streams found.\n\n"
+                        "DEV MODE: Using simulated EEG data.\n\n"
+                        "For real experiments, set EXPERIMENT_MODE = True"
+                    )
     
     def _update_composition(self) -> None:
         """Update composition state."""
@@ -701,15 +774,16 @@ class BCICompositionWindow(QMainWindow):
         
         # Get EEG data and classify
         if self._use_lsl and self._lsl_connected:
-            # Pull and process from LSL stream
+            # Pull and process from LSL stream (REAL DATA)
             processed = self.preprocessor.pull_and_process(n_samples=16)
             
             if len(processed) > 0:
-                # Get buffer for classification
-                eeg_buffer = self.preprocessor.get_recent_data(1.0)
-                result = self.classifier.classify(eeg_buffer, method="fft")
+                # Get buffer for classification (0.5s window for CCA)
+                eeg_buffer = self.preprocessor.get_recent_data(0.5)
+                # Use CCA - it's more robust with proper phase-matched references
+                result = self.classifier.classify(eeg_buffer, method="cca")
             else:
-                # No data available
+                # No data available - hold position
                 result = ClassificationResult(
                     target=AttentionTarget.NONE,
                     confidence=0.0,
@@ -717,25 +791,45 @@ class BCICompositionWindow(QMainWindow):
                     power_10hz=0.0,
                     raw_score=0.0
                 )
+        elif self.EXPERIMENT_MODE:
+            # EXPERIMENT MODE: No LSL = ERROR, should not reach here
+            # This is a safety check - _start_composition should block this
+            self._stop_composition()
+            QMessageBox.critical(
+                self,
+                "EXPERIMENT MODE ERROR",
+                "Lost LSL connection during experiment!\n\n"
+                "Composition stopped to prevent invalid data."
+            )
+            return
         else:
-            # Simulated mode
-            # Simulate user attention based on cursor position
-            # (for testing - user "wants" to go to center)
-            current_pitch = self.controller.position.pitch
-            if current_pitch < 0.4:
-                self.eeg_source.set_target(15.0)  # Attend to UP
-            elif current_pitch > 0.6:
-                self.eeg_source.set_target(10.0)  # Attend to DOWN
+            # DEV MODE ONLY: Simulated data (disabled in experiments)
+            if self.eeg_source is None:
+                # Safety: should not happen, but handle gracefully
+                result = ClassificationResult(
+                    target=AttentionTarget.NONE,
+                    confidence=0.0,
+                    power_15hz=0.0,
+                    power_10hz=0.0,
+                    raw_score=0.0
+                )
             else:
-                self.eeg_source.set_target(None)  # No strong attention
-            
-            # Generate and process EEG
-            eeg_chunk = self.eeg_source.generate_chunk(16)
-            processed = self.preprocessor.process_chunk(eeg_chunk)
-            
-            # Classify
-            eeg_buffer = self.preprocessor.get_recent_data(1.0)
-            result = self.classifier.classify(eeg_buffer, method="fft")
+                # Simulate user attention based on cursor position
+                current_pitch = self.controller.position.pitch
+                if current_pitch < 0.4:
+                    self.eeg_source.set_target(15.0)  # Attend to UP
+                elif current_pitch > 0.6:
+                    self.eeg_source.set_target(10.0)  # Attend to DOWN
+                else:
+                    self.eeg_source.set_target(None)  # No strong attention
+                
+                # Generate and process EEG
+                eeg_chunk = self.eeg_source.generate_chunk(16)
+                processed = self.preprocessor.process_chunk(eeg_chunk)
+                
+                # Classify with CCA
+                eeg_buffer = self.preprocessor.get_recent_data(0.5)
+                result = self.classifier.classify(eeg_buffer, method="cca")
         
         # Update controller with classification
         pos = self.controller.update(result)
@@ -759,7 +853,7 @@ class BCICompositionWindow(QMainWindow):
             duration=self.controller.duration,
             waveform_name=self.waveform_combo.currentText(),
             metadata={
-                'simulated': self._use_simulated,
+                'simulated': not self._use_lsl,
                 'top_frequency': self.stimulus.top_frequency,
                 'bottom_frequency': self.stimulus.bottom_frequency
             }
@@ -859,7 +953,7 @@ class BCICompositionWindow(QMainWindow):
         # Update UI
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
-        self.random_btn.setEnabled(False)
+        # self.random_btn.setEnabled(False)  # Removed - use calibration instead
         self.duration_spin.setEnabled(False)
         
         self.top_target.set_active(True)
@@ -903,7 +997,7 @@ class BCICompositionWindow(QMainWindow):
                 
                 # Enable controls
                 self.start_btn.setEnabled(True)
-                self.random_btn.setEnabled(True)
+                # self.random_btn.setEnabled(True)  # Removed - use calibration instead
                 self.duration_spin.setEnabled(True)
                 self.play_btn.setEnabled(True)
                 self.save_btn.setEnabled(True)
@@ -923,6 +1017,320 @@ class BCICompositionWindow(QMainWindow):
         self.controller.stop()
         self.stimulus.stop()
         event.accept()
+    
+    # ==================== CALIBRATION ====================
+    
+    def _start_calibration(self) -> None:
+        """Start the calibration process."""
+        if not self._use_lsl or not self._lsl_connected:
+            QMessageBox.warning(
+                self,
+                "LSL Required",
+                "Please connect to LSL first.\n\n"
+                "Calibration requires real EEG data from your headset."
+            )
+            return
+        
+        # Confirm with user
+        reply = QMessageBox.question(
+            self,
+            "Start Calibration",
+            "Calibration will record your brain's response to each flickering target.\n\n"
+            "You will see:\n"
+            "- 3 trials of 15Hz (look at TOP)\n"
+            "- 3 trials of 10Hz (look at BOTTOM)\n"
+            "- Each trial is 5 seconds with 2 second rest\n\n"
+            "Total time: ~40 seconds\n\n"
+            "Ready to begin?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Clear any existing calibration file to ensure fresh data
+        cal_path = Path("calibration_data.json")
+        if cal_path.exists():
+            try:
+                cal_path.unlink()
+                print(f"[CALIBRATION] Cleared existing calibration file: {cal_path}")
+            except Exception as e:
+                print(f"[CALIBRATION] Warning: Could not delete old calibration file: {e}")
+        
+        # Setup calibration
+        self._mode = SessionMode.CALIBRATING
+        self._calibration_data = CalibrationData(
+            sample_rate=self.preprocessor.sample_rate,
+            n_channels=8
+        )
+        
+        print(f"[CALIBRATION] Starting new calibration session")
+        print(f"[CALIBRATION] Sample rate: {self.preprocessor.sample_rate}")
+        
+        # Disable controls
+        self.start_btn.setEnabled(False)
+        self.calibrate_btn.setEnabled(False)
+        # self.random_btn.setEnabled(False)  # Removed - use calibration instead
+        self.connect_lsl_btn.setEnabled(False)
+        
+        # Start calibration sequence
+        self._cal_trial_index = 0
+        self._cal_sequence = [15.0, 10.0, 15.0, 10.0, 15.0, 10.0]  # Alternating
+        self._cal_trial_duration = 5.0
+        self._cal_rest_duration = 2.0
+        
+        self.status_label.setText("Calibration starting... Get ready!")
+        self.canvas.clear()
+        
+        # Start with rest period
+        QTimer.singleShot(1000, self._cal_start_rest)
+    
+    def _cal_start_rest(self) -> None:
+        """Start rest period before trial."""
+        try:
+            if self._cal_trial_index >= len(self._cal_sequence):
+                self._cal_finish()
+                return
+            
+            freq = self._cal_sequence[self._cal_trial_index]
+            target = "TOP (15Hz)" if freq == 15.0 else "BOTTOM (10Hz)"
+            
+            self.status_label.setText(
+                f"REST - Next: Look at {target} - Trial {self._cal_trial_index + 1}/{len(self._cal_sequence)}"
+            )
+            
+            # Turn off flicker during rest
+            self.top_target.set_active(False)
+            self.bottom_target.set_active(False)
+            
+            # After rest, start trial
+            QTimer.singleShot(int(self._cal_rest_duration * 1000), self._cal_start_trial)
+            
+        except Exception as e:
+            print(f"Error in _cal_start_rest: {e}")
+            import traceback
+            traceback.print_exc()
+            self._cal_finish()
+    
+    def _cal_start_trial(self) -> None:
+        """Start a calibration trial."""
+        try:
+            freq = self._cal_sequence[self._cal_trial_index]
+            target = "TOP" if freq == 15.0 else "BOTTOM"
+            
+            print(f"[CALIBRATION] Starting trial {self._cal_trial_index + 1}: {freq}Hz ({target})")
+            self.status_label.setText(f"LOOK AT {target}! Recording {freq}Hz response...")
+            
+            # Clear buffers and counters
+            self._cal_eeg_buffer = []
+            self._cal_timestamp_buffer = []
+            self._cal_no_data_count = 0
+            
+            # Start flickering
+            self.stimulus.start()
+            self._stimulus_timer.start()
+            self.top_target.set_active(True)
+            self.bottom_target.set_active(True)
+            
+            # Highlight the target by changing border color
+            if freq == 15.0:
+                self.top_target.border_color = QColor(0, 255, 0)  # Green border
+                self.bottom_target.border_color = QColor(100, 100, 100)  # Normal
+            else:
+                self.bottom_target.border_color = QColor(0, 255, 0)  # Green border
+                self.top_target.border_color = QColor(100, 100, 100)  # Normal
+            
+            # Start recording timer (4ms = ~250Hz)
+            self._cal_record_timer = QTimer()
+            self._cal_record_timer.timeout.connect(self._cal_record_sample)
+            self._cal_record_timer.start(4)
+            
+            # End trial after duration
+            QTimer.singleShot(int(self._cal_trial_duration * 1000), self._cal_end_trial)
+            
+        except Exception as e:
+            print(f"[CALIBRATION] Error in _cal_start_trial: {e}")
+            import traceback
+            traceback.print_exc()
+            self._cal_finish()
+    
+    def _cal_record_sample(self) -> None:
+        """Record EEG sample during calibration trial."""
+        try:
+            if not self._use_lsl or not self._lsl_connected:
+                print("[CALIBRATION] Warning: LSL not connected during recording")
+                return
+            
+            # Pull data from LSL
+            processed = self.preprocessor.pull_and_process(n_samples=8)
+            
+            if processed is not None and len(processed) > 0:
+                for sample in processed:
+                    self._cal_eeg_buffer.append(sample)
+                    self._cal_timestamp_buffer.append(time.perf_counter())
+                
+                # Log occasionally to confirm data is coming in
+                if len(self._cal_eeg_buffer) % 50 == 0:
+                    print(f"[CALIBRATION] Recorded {len(self._cal_eeg_buffer)} samples")
+            else:
+                # Log if no data received
+                if not hasattr(self, '_cal_no_data_count'):
+                    self._cal_no_data_count = 0
+                self._cal_no_data_count += 1
+                if self._cal_no_data_count % 25 == 0:
+                    print(f"[CALIBRATION] Warning: No data received ({self._cal_no_data_count} empty pulls)")
+        except Exception as e:
+            print(f"[CALIBRATION] Error in _cal_record_sample: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _cal_end_trial(self) -> None:
+        """End calibration trial and save data."""
+        try:
+            # Stop recording
+            if hasattr(self, '_cal_record_timer') and self._cal_record_timer is not None:
+                self._cal_record_timer.stop()
+            
+            # Stop flickering
+            self._stimulus_timer.stop()
+            self.stimulus.stop()
+            self.top_target.set_active(False)
+            self.bottom_target.set_active(False)
+            
+            # Reset border colors
+            self.top_target.border_color = QColor(100, 100, 100)
+            self.bottom_target.border_color = QColor(100, 100, 100)
+            
+            # Save trial data
+            freq = self._cal_sequence[self._cal_trial_index]
+            
+            if self._cal_eeg_buffer:
+                eeg_data = np.array(self._cal_eeg_buffer)
+                timestamps = np.array(self._cal_timestamp_buffer)
+                
+                print(f"[CALIBRATION] Trial {self._cal_trial_index + 1} ended: {len(eeg_data)} samples, shape: {eeg_data.shape}")
+                
+                self._calibration_data.add_trial(
+                    frequency=freq,
+                    eeg_data=eeg_data,
+                    timestamps=timestamps,
+                    duration=self._cal_trial_duration
+                )
+                
+                self.status_label.setText(
+                    f"Trial {self._cal_trial_index + 1} complete! Recorded {len(eeg_data)} samples"
+                )
+            else:
+                print(f"[CALIBRATION] Trial {self._cal_trial_index + 1} ended: NO SAMPLES RECORDED!")
+                self.status_label.setText(
+                    f"Trial {self._cal_trial_index + 1} complete! (No samples recorded)"
+                )
+            
+            # Move to next trial
+            self._cal_trial_index += 1
+            
+        except Exception as e:
+            print(f"[CALIBRATION] Error in _cal_end_trial: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # Continue or finish
+        QTimer.singleShot(500, self._cal_start_rest)
+    
+    def _cal_finish(self) -> None:
+        """Finish calibration and compute templates."""
+        self._mode = SessionMode.IDLE
+        
+        stats = self._calibration_data.get_statistics()
+        print(f"[CALIBRATION] Finishing calibration")
+        print(f"[CALIBRATION] Stats: {stats}")
+        
+        # Check if we got any data
+        if stats['n_trials_15hz'] == 0 and stats['n_trials_10hz'] == 0:
+            print("[CALIBRATION] ERROR: No trials recorded!")
+            QMessageBox.warning(
+                self,
+                "Calibration Failed",
+                "No EEG data was recorded during calibration.\n\n"
+                "Please check:\n"
+                "1. LSL stream is connected\n"
+                "2. Unicorn headset is on and transmitting\n"
+                "3. Try reconnecting to LSL"
+            )
+            # Re-enable controls
+            self.start_btn.setEnabled(True)
+            self.calibrate_btn.setEnabled(True)
+            self.connect_lsl_btn.setEnabled(True)
+            return
+        
+        # Compute templates
+        self._calibration_data.compute_templates()
+        
+        # Load into classifier
+        if self.classifier.load_calibration(self._calibration_data):
+            self.cal_status.setText("Calibrated!")
+            self.cal_status.setStyleSheet("color: #00ff00;")
+            
+            # Save calibration
+            cal_path = Path("calibration_data.json")
+            self._calibration_data.save(cal_path)
+            
+            print(f"[CALIBRATION] Saved to {cal_path.absolute()}")
+            
+            QMessageBox.information(
+                self,
+                "Calibration Complete",
+                f"Calibration successful!\n\n"
+                f"15Hz trials: {stats['n_trials_15hz']}\n"
+                f"10Hz trials: {stats['n_trials_10hz']}\n"
+                f"Total samples: {stats['total_samples_15hz'] + stats['total_samples_10hz']}\n\n"
+                f"Saved to: {cal_path.absolute()}\n\n"
+                f"The classifier will now use your personalized brain responses!"
+            )
+        else:
+            QMessageBox.warning(
+                self,
+                "Calibration Failed",
+                "Could not compute templates from calibration data.\n"
+                "Please try again."
+            )
+        
+        # Re-enable controls
+        self.start_btn.setEnabled(True)
+        self.calibrate_btn.setEnabled(True)
+        # self.random_btn.setEnabled(True)  # Removed - use calibration instead
+        self.connect_lsl_btn.setEnabled(True)
+        
+        self.status_label.setText("Calibration complete! Ready to compose.")
+    
+    def _load_calibration(self) -> None:
+        """Load calibration from file."""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Calibration",
+            "",
+            "Calibration Files (*.json)"
+        )
+        
+        if not filepath:
+            return
+        
+        try:
+            self._calibration_data = CalibrationData.load(filepath)
+            
+            if self.classifier.load_calibration(self._calibration_data):
+                self.cal_status.setText("Calibrated!")
+                self.cal_status.setStyleSheet("color: #00ff00;")
+                
+                stats = self._calibration_data.get_statistics()
+                self.status_label.setText(
+                    f"Loaded calibration from {stats['created_at']}"
+                )
+            else:
+                QMessageBox.warning(self, "Load Failed", "Could not load calibration data.")
+                
+        except Exception as e:
+            QMessageBox.warning(self, "Load Error", f"Error loading calibration: {e}")
 
 
 def run_bci_app():

@@ -296,15 +296,39 @@ def play_score(score: BCIScore) -> None:
     Args:
         score: BCIScore to play
     """
-    from src.core.synthesizer import Synthesizer
+    import sounddevice as sd
     
-    # Create page from score
-    page = score.to_page()
+    if not score.trail or len(score.trail) < 2:
+        print("Warning: Score has no trail data")
+        return
     
-    # Create synthesizer and play
-    synth = Synthesizer()
-    synth.set_page(page)
-    synth.play()
+    try:
+        # Synthesize to array first (more reliable)
+        audio = synthesize_score(score)
+        
+        if audio is not None and len(audio) > 0:
+            # audio shape is (2, n_samples) for stereo - need (n_samples, 2)
+            if audio.ndim == 2:
+                if audio.shape[0] == 2:
+                    audio = audio.T  # Transpose from (2, N) to (N, 2)
+                # If shape[1] == 2, it's already correct
+            elif audio.ndim == 1:
+                # Mono - make stereo
+                audio = np.column_stack([audio, audio])
+            
+            # Ensure float32 and normalize
+            audio = audio.astype(np.float32)
+            if np.max(np.abs(audio)) > 1.0:
+                audio = audio / np.max(np.abs(audio))
+            
+            # Play using sounddevice directly
+            sd.play(audio, samplerate=44100)
+            sd.wait()
+        else:
+            print("Warning: No audio generated")
+    except Exception as e:
+        print(f"Playback error: {e}")
+        raise
 
 
 if __name__ == "__main__":
