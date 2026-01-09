@@ -117,20 +117,38 @@ python -c "from src.bci.unicorn_streamer import check_unicorn_setup; check_unico
 
 ## Channel Configuration
 
-The Unicorn Black has 8 EEG channels:
+The Unicorn Hybrid Black streams **17 channels** at 250 Hz:
+
+### EEG Channels (0-7) - measured in microvolts (µV)
 
 | Index | Name | Location | Best For |
 |-------|------|----------|----------|
-| 0 | Fz | Frontal midline | - |
+| 0 | Fz | Frontal midline | Attention |
 | 1 | C3 | Left motor | Motor imagery |
-| 2 | Cz | Central midline | - |
+| 2 | Cz | Central midline | Motor imagery |
 | 3 | C4 | Right motor | Motor imagery |
 | 4 | Pz | Parietal midline | P300 |
 | 5 | PO7 | Left occipital | **SSVEP** |
 | 6 | Oz | Occipital midline | **SSVEP** |
 | 7 | PO8 | Right occipital | **SSVEP** |
 
-For SSVEP (our 15Hz/10Hz paradigm), channels **PO7, Oz, PO8** (indices 5, 6, 7) are most important.
+### Auxiliary Channels (8-16)
+
+| Index | Name | Unit | Description |
+|-------|------|------|-------------|
+| 8 | AccX | g | Accelerometer X-axis |
+| 9 | AccY | g | Accelerometer Y-axis |
+| 10 | AccZ | g | Accelerometer Z-axis |
+| 11 | GyroX | °/s | Gyroscope X-axis |
+| 12 | GyroY | °/s | Gyroscope Y-axis |
+| 13 | GyroZ | °/s | Gyroscope Z-axis |
+| 14 | Counter | - | Sequential sample count |
+| 15 | Battery | % | Battery level |
+| 16 | Validation | - | Data validity flag |
+
+### For SSVEP (our 15Hz/10Hz paradigm)
+
+Channels **PO7, Oz, PO8** (indices 5, 6, 7) are over the **visual cortex** and best for detecting SSVEP responses to flickering stimuli.
 
 ---
 

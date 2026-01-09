@@ -29,15 +29,38 @@ except ImportError:
     LSL_AVAILABLE = False
 
 
-# g.tec Unicorn Black channel configuration
-UNICORN_EEG_CHANNELS = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
+# g.tec Unicorn Hybrid Black channel configuration
+# Total: 17 channels at 250 Hz, 24-bit resolution
 UNICORN_SAMPLE_RATE = 250  # Hz
 UNICORN_N_EEG_CHANNELS = 8
-UNICORN_N_TOTAL_CHANNELS = 17  # When streaming all signals
+UNICORN_N_TOTAL_CHANNELS = 17
+
+# Channel layout (0-indexed):
+# Channels 0-7:   EEG (microvolts, µV)
+# Channels 8-10:  Accelerometer X, Y, Z (g - gravitational force)
+# Channels 11-13: Gyroscope X, Y, Z (degrees/second, °/s)
+# Channel 14:     Counter (sequential sample count)
+# Channel 15:     Battery Level (percentage)
+# Channel 16:     Validation Indicator (data validity flag)
+
+UNICORN_EEG_CHANNELS = ['Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8']
+UNICORN_ALL_CHANNELS = [
+    'Fz', 'C3', 'Cz', 'C4', 'Pz', 'PO7', 'Oz', 'PO8',  # EEG (0-7)
+    'AccX', 'AccY', 'AccZ',      # Accelerometer (8-10)
+    'GyroX', 'GyroY', 'GyroZ',   # Gyroscope (11-13)
+    'Counter',                    # Sample counter (14)
+    'Battery',                    # Battery level % (15)
+    'Validation'                  # Data validity (16)
+]
 
 # Channel indices
-UNICORN_EEG_INDICES = list(range(8))  # First 8 channels are EEG
-OCCIPITAL_INDICES = [5, 6, 7]  # PO7, Oz, PO8 - best for SSVEP
+UNICORN_EEG_INDICES = list(range(8))  # Channels 0-7 are EEG
+UNICORN_ACC_INDICES = [8, 9, 10]      # Accelerometer X, Y, Z
+UNICORN_GYRO_INDICES = [11, 12, 13]   # Gyroscope X, Y, Z
+
+# Occipital channels for SSVEP (best for 10Hz/15Hz detection)
+# PO7 (ch5), Oz (ch6), PO8 (ch7) are over visual cortex
+OCCIPITAL_INDICES = [5, 6, 7]
 
 
 
