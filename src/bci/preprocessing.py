@@ -156,7 +156,7 @@ class EEGPreprocessor:
                 self._bandpass_filter.b,
                 self._bandpass_filter.a,
                 [sample[ch]],
-                zi=self._bp_zi[ch] * sample[ch]
+                zi=self._bp_zi[ch]
             )
             
             # Apply notch filter
@@ -164,7 +164,7 @@ class EEGPreprocessor:
                 self._notch_filter.b,
                 self._notch_filter.a,
                 bp_out,
-                zi=self._notch_zi[ch] * bp_out[0]
+                zi=self._notch_zi[ch]
             )
             
             filtered[ch] = notch_out[0]
@@ -200,6 +200,10 @@ class EEGPreprocessor:
     
     def _update_statistics(self, sample: NDArray[np.float64]) -> None:
         """Update running mean and variance using Welford's algorithm."""
+        # Check for NaN/Inf in sample - skip if corrupted
+        if not np.all(np.isfinite(sample)):
+            return
+        
         self._n_samples_seen += 1
         n = self._n_samples_seen
         
@@ -207,11 +211,21 @@ class EEGPreprocessor:
         self._running_mean += delta / n
         delta2 = sample - self._running_mean
         self._running_var += (delta * delta2 - self._running_var) / n
+        
+        # Clamp variance to prevent overflow
+        self._running_var = np.clip(self._running_var, 1e-10, 1e10)
     
     def _normalize(self, sample: NDArray[np.float64]) -> NDArray[np.float64]:
         """Z-score normalize using running statistics."""
+        # Check for NaN/Inf - return zeros if corrupted
+        if not np.all(np.isfinite(sample)):
+            return np.zeros_like(sample)
+        
         std = np.sqrt(self._running_var + 1e-8)  # Add epsilon for stability
-        return (sample - self._running_mean) / std
+        normalized = (sample - self._running_mean) / std
+        
+        # Clamp output to prevent extreme values
+        return np.clip(normalized, -10, 10)
     
     def detect_artifact(self, sample: NDArray[np.float64]) -> bool:
         """

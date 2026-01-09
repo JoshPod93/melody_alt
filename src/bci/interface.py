@@ -1239,69 +1239,87 @@ class BCICompositionWindow(QMainWindow):
     
     def _cal_finish(self) -> None:
         """Finish calibration and compute templates."""
-        self._mode = SessionMode.IDLE
-        
-        stats = self._calibration_data.get_statistics()
-        print(f"[CALIBRATION] Finishing calibration")
-        print(f"[CALIBRATION] Stats: {stats}")
-        
-        # Check if we got any data
-        if stats['n_trials_15hz'] == 0 and stats['n_trials_10hz'] == 0:
-            print("[CALIBRATION] ERROR: No trials recorded!")
-            QMessageBox.warning(
-                self,
-                "Calibration Failed",
-                "No EEG data was recorded during calibration.\n\n"
-                "Please check:\n"
-                "1. LSL stream is connected\n"
-                "2. Unicorn headset is on and transmitting\n"
-                "3. Try reconnecting to LSL"
-            )
+        try:
+            self._mode = SessionMode.IDLE
+            
+            # Reset preprocessor filter state to prevent numerical issues
+            print("[CALIBRATION] Resetting preprocessor state...")
+            self.preprocessor.reset()
+            
+            stats = self._calibration_data.get_statistics()
+            print(f"[CALIBRATION] Finishing calibration")
+            print(f"[CALIBRATION] Stats: {stats}")
+            
+            # Check if we got any data
+            if stats['n_trials_15hz'] == 0 and stats['n_trials_10hz'] == 0:
+                print("[CALIBRATION] ERROR: No trials recorded!")
+                QMessageBox.warning(
+                    self,
+                    "Calibration Failed",
+                    "No EEG data was recorded during calibration.\n\n"
+                    "Please check:\n"
+                    "1. LSL stream is connected\n"
+                    "2. Unicorn headset is on and transmitting\n"
+                    "3. Try reconnecting to LSL"
+                )
+                # Re-enable controls
+                self.start_btn.setEnabled(True)
+                self.calibrate_btn.setEnabled(True)
+                self.connect_lsl_btn.setEnabled(True)
+                return
+            
+            # Compute templates
+            print("[CALIBRATION] Computing templates...")
+            self._calibration_data.compute_templates()
+            
+            # Load into classifier
+            print("[CALIBRATION] Loading into classifier...")
+            if self.classifier.load_calibration(self._calibration_data):
+                self.cal_status.setText("Calibrated!")
+                self.cal_status.setStyleSheet("color: #00ff00;")
+                
+                # Save calibration
+                cal_path = Path("calibration_data.json")
+                self._calibration_data.save(cal_path)
+                
+                print(f"[CALIBRATION] Saved to {cal_path.absolute()}")
+                
+                QMessageBox.information(
+                    self,
+                    "Calibration Complete",
+                    f"Calibration successful!\n\n"
+                    f"15Hz trials: {stats['n_trials_15hz']}\n"
+                    f"10Hz trials: {stats['n_trials_10hz']}\n"
+                    f"Total samples: {stats['total_samples_15hz'] + stats['total_samples_10hz']}\n\n"
+                    f"Saved to: {cal_path.absolute()}\n\n"
+                    f"The classifier will now use your personalized brain responses!"
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Calibration Failed",
+                    "Could not compute templates from calibration data.\n"
+                    "Please try again."
+                )
+            
             # Re-enable controls
             self.start_btn.setEnabled(True)
             self.calibrate_btn.setEnabled(True)
             self.connect_lsl_btn.setEnabled(True)
-            return
-        
-        # Compute templates
-        self._calibration_data.compute_templates()
-        
-        # Load into classifier
-        if self.classifier.load_calibration(self._calibration_data):
-            self.cal_status.setText("Calibrated!")
-            self.cal_status.setStyleSheet("color: #00ff00;")
             
-            # Save calibration
-            cal_path = Path("calibration_data.json")
-            self._calibration_data.save(cal_path)
+            self.status_label.setText("Calibration complete! Ready to compose.")
+            print("[CALIBRATION] Calibration finish complete")
             
-            print(f"[CALIBRATION] Saved to {cal_path.absolute()}")
+        except Exception as e:
+            print(f"[CALIBRATION] Error in _cal_finish: {e}")
+            import traceback
+            traceback.print_exc()
             
-            QMessageBox.information(
-                self,
-                "Calibration Complete",
-                f"Calibration successful!\n\n"
-                f"15Hz trials: {stats['n_trials_15hz']}\n"
-                f"10Hz trials: {stats['n_trials_10hz']}\n"
-                f"Total samples: {stats['total_samples_15hz'] + stats['total_samples_10hz']}\n\n"
-                f"Saved to: {cal_path.absolute()}\n\n"
-                f"The classifier will now use your personalized brain responses!"
-            )
-        else:
-            QMessageBox.warning(
-                self,
-                "Calibration Failed",
-                "Could not compute templates from calibration data.\n"
-                "Please try again."
-            )
-        
-        # Re-enable controls
-        self.start_btn.setEnabled(True)
-        self.calibrate_btn.setEnabled(True)
-        # self.random_btn.setEnabled(True)  # Removed - use calibration instead
-        self.connect_lsl_btn.setEnabled(True)
-        
-        self.status_label.setText("Calibration complete! Ready to compose.")
+            # Re-enable controls even on error
+            self.start_btn.setEnabled(True)
+            self.calibrate_btn.setEnabled(True)
+            self.connect_lsl_btn.setEnabled(True)
+            self.status_label.setText("Calibration error - see console")
     
     def _load_calibration(self) -> None:
         """Load calibration from file."""
