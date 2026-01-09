@@ -189,6 +189,13 @@ class LSLReceiver:
             else:
                 print("Auto-detecting EEG stream...")
                 streams = resolve_byprop('type', self.stream_type, timeout=self.timeout)
+                
+                # Unicorn streams as 'Data' type, so try that too
+                if not streams:
+                    print("No EEG stream found, trying 'Data' type...")
+                    streams = resolve_byprop('type', 'Data', timeout=self.timeout)
+                    # Filter to streams with 8+ channels (likely EEG)
+                    streams = [s for s in streams if s.channel_count() >= 8]
             
             if not streams:
                 print("No streams found")

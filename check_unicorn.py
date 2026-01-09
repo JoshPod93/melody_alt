@@ -63,14 +63,19 @@ def check_lsl_streams():
 
 def test_data_reception(duration=3.0):
     """Test receiving actual data from the stream."""
-    from pylsl import StreamInlet, resolve_byprop
+    from pylsl import StreamInlet, resolve_streams, resolve_byprop
     
     print(f"\nTesting data reception for {duration} seconds...")
     
-    # Find EEG stream
-    streams = resolve_byprop('type', 'EEG', timeout=5.0)
+    # Find stream - try EEG first, then any stream with 8+ channels
+    streams = resolve_byprop('type', 'EEG', timeout=2.0)
     if not streams:
-        print("[ERROR] No EEG stream found")
+        # Unicorn might stream as 'Data' type instead of 'EEG'
+        all_streams = resolve_streams(2.0)
+        streams = [s for s in all_streams if s.channel_count() >= 8]
+    
+    if not streams:
+        print("[ERROR] No suitable stream found")
         return False
     
     # Connect
