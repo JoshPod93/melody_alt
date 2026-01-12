@@ -1,20 +1,24 @@
 """
 SSVEP Classifier module for BCI-UPIC.
 
-Provides lightweight, real-time classification of SSVEP responses.
-Determines whether the user is attending to the 15Hz (up) or 10Hz (down) target.
+        Provides lightweight, real-time classification of SSVEP responses.
+Determines whether the user is attending to the higher frequency (up) or lower frequency (down) target.
 
 Methods implemented:
-1. FFT-based power ratio (simple, fast)
-2. Canonical Correlation Analysis (CCA) - gold standard for SSVEP
+1. FFT-based power ratio (simple, fast) - includes harmonics
+2. Canonical Correlation Analysis (CCA) - gold standard for SSVEP - includes harmonics
+
+Harmonics: Both methods use n_harmonics=2 (fundamental + 1st harmonic) to improve detection.
 """
 
 from __future__ import annotations
 
+import json
 import numpy as np
 from numpy.typing import NDArray
 from dataclasses import dataclass, field
-from typing import Tuple, Optional, List, TYPE_CHECKING
+from typing import Tuple, Optional, List, Dict, TYPE_CHECKING
+from pathlib import Path
 from scipy import signal
 from scipy.linalg import eig
 from enum import Enum
@@ -26,8 +30,8 @@ if TYPE_CHECKING:
 class AttentionTarget(Enum):
     """Which target the user is attending to."""
     NONE = 0      # No clear attention detected
-    UP = 1        # Attending to top target (15Hz) - move cursor up
-    DOWN = 2      # Attending to bottom target (10Hz) - move cursor down
+    UP = 1        # Attending to higher frequency target (top) - move cursor up
+    DOWN = 2      # Attending to lower frequency target (bottom) - move cursor down
 
 
 @dataclass
@@ -35,8 +39,8 @@ class ClassificationResult:
     """Result of SSVEP classification."""
     target: AttentionTarget
     confidence: float  # 0-1, how confident the classification is
-    power_15hz: float  # Power at 15Hz
-    power_10hz: float  # Power at 10Hz
+    power_higher_freq: float  # Power at higher frequency target (including harmonics)
+    power_lower_freq: float  # Power at lower frequency target (including harmonics)
     raw_score: float   # Raw classification score (positive = up, negative = down)
 
 
@@ -57,12 +61,13 @@ class SSVEPClassifier:
         occipital_channels: Indices of occipital channels (best for SSVEP)
     """
     sample_rate: float = 250.0  # Unicorn Black sample rate
-    target_frequencies: Tuple[float, float] = (15.0, 10.0)  # (up, down)
-    target_phases: Tuple[float, float] = (0.0, np.pi)  # Phase offsets matching stimulus!
+    target_frequencies: Tuple[float, float] = (15.0, 12.0)  # (higher_freq, lower_freq) - will be overridden by screen calibration if available
+    target_phases: Tuple[float, float] = (0.0, np.pi)  # Phase offsets: higher freq at 0°, lower freq at 180°
     window_seconds: float = 0.5  # Shorter window for faster response
     n_harmonics: int = 2  # Include fundamental + 1 harmonic
     threshold: float = 0.05  # Very low threshold - almost always move
     occipital_channels: List[int] = field(default_factory=lambda: [5, 6, 7])  # PO7, Oz, PO8
+    _screen_calibration: Optional[Dict] = field(default=None, repr=False)  # Screen calibration data
     
     # CCA reference signals - can be from calibration or synthetic
     _ref_signals_up: NDArray[np.float64] = field(init=False, repr=False)
@@ -75,7 +80,33 @@ class SSVEPClassifier:
     
     def __post_init__(self) -> None:
         """Initialize reference signals for CCA."""
+        self._load_screen_calibration()  # Load screen calibration if available
         self._generate_reference_signals()
+    
+    def _load_screen_calibration(self) -> None:
+        """Load screen calibration data using the centralized configuration."""
+        from .screen_config import get_screen_calibration
+        
+        screen_cal = get_screen_calibration()
+        
+        # Use actual measured frequencies from calibration
+        self.target_frequencies = screen_cal.frequencies
+        self.target_phases = screen_cal.phases
+        
+        # Store calibration data for reference (using generic field names)
+        self._screen_calibration = {
+            'refresh_rate_hz': screen_cal.refresh_rate_hz,
+            'actual_higher_freq': screen_cal.actual_higher_freq,
+            'actual_lower_freq': screen_cal.actual_lower_freq,
+            'calibrated_at': screen_cal.calibrated_at
+        }
+        
+        if screen_cal.is_calibrated:
+            print(f"[SCREEN CONFIG] Using calibrated frequencies: "
+                  f"{self.target_frequencies[0]:.3f}Hz, {self.target_frequencies[1]:.3f}Hz")
+        else:
+            print(f"[SCREEN CONFIG] Using default frequencies: "
+                  f"{self.target_frequencies[0]:.1f}Hz, {self.target_frequencies[1]:.1f}Hz")
     
     def load_calibration(self, calibration_data: 'CalibrationData') -> bool:
         """
@@ -146,9 +177,12 @@ class SSVEPClassifier:
         The reference signals must have the same frequency AND phase as
         the flickering targets to maximize correlation with the SSVEP response.
         
+        Uses actual measured frequencies from screen calibration if available,
+        otherwise uses target frequencies.
+        
         Visual stimulus uses: sin(2π * f * t + phase)
-        - 15Hz (up): phase = 0
-        - 10Hz (down): phase = π (180°)
+        - Higher frequency (up): phase = 0
+        - Lower frequency (down): phase = π (180°)
         """
         n_samples = int(self.window_seconds * self.sample_rate)
         t = np.arange(n_samples) / self.sample_rate
@@ -229,8 +263,8 @@ class SSVEPClassifier:
         return ClassificationResult(
             target=target,
             confidence=confidence,
-            power_15hz=power_up,
-            power_10hz=power_down,
+            power_higher_freq=power_up,
+            power_lower_freq=power_down,
             raw_score=ratio
         )
     
@@ -274,8 +308,8 @@ class SSVEPClassifier:
         cca_diff = corr_up - corr_down
         
         # FFT power difference (normalized)
-        fft_total = fft_result.power_15hz + fft_result.power_10hz + 1e-10
-        fft_diff = (fft_result.power_15hz - fft_result.power_10hz) / fft_total
+        fft_total = fft_result.power_higher_freq + fft_result.power_lower_freq + 1e-10
+        fft_diff = (fft_result.power_higher_freq - fft_result.power_lower_freq) / fft_total
         
         # Combined score: weight CCA more if calibrated, otherwise equal
         if self._using_calibration:
@@ -296,8 +330,8 @@ class SSVEPClassifier:
         return ClassificationResult(
             target=target,
             confidence=confidence,
-            power_15hz=corr_up,
-            power_10hz=corr_down,
+            power_higher_freq=corr_up,
+            power_lower_freq=corr_down,
             raw_score=combined_score
         )
     
@@ -395,8 +429,8 @@ class SSVEPClassifier:
         return ClassificationResult(
             target=current.target,
             confidence=min(boosted_confidence, 1.0),
-            power_15hz=current.power_15hz,
-            power_10hz=current.power_10hz,
+            power_higher_freq=current.power_higher_freq,
+            power_lower_freq=current.power_lower_freq,
             raw_score=avg_score
         )
     

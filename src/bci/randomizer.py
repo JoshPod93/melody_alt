@@ -318,8 +318,8 @@ class QuickTest:
             results[target_name] = {
                 'detected': result.target.name,
                 'confidence': result.confidence,
-                'power_15hz': result.power_15hz,
-                'power_10hz': result.power_10hz
+                'power_higher_freq': result.power_higher_freq,
+                'power_lower_freq': result.power_lower_freq
             }
         
         return results

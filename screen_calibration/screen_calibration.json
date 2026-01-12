@@ -1,0 +1,29 @@
+{
+  "refresh_rate_hz": 60.049470542540575,
+  "target_higher_freq": 15.0,
+  "actual_higher_freq": 14.19915684340232,
+  "target_lower_freq": 12.0,
+  "actual_lower_freq": 11.39742576029254,
+  "phase_higher_freq": 0.0,
+  "phase_lower_freq": 3.141592653589793,
+  "target_15hz": 15.0,
+  "actual_15hz": 14.19915684340232,
+  "target_12hz": 12.0,
+  "actual_12hz": 11.39742576029254,
+  "phase_15hz": 0.0,
+  "phase_12hz": 3.141592653589793,
+  "calibrated_at": "2026-01-12 12:10:40",
+  "monitor_info": "Unknown",
+  "statistics_15hz": {
+    "frequency": 14.19915684340232,
+    "power": 21465.43147345243,
+    "n_samples": 593,
+    "sample_rate": 118.59295786109261
+  },
+  "statistics_12hz": {
+    "frequency": 11.39742576029254,
+    "power": 21686.682124123825,
+    "n_samples": 593,
+    "sample_rate": 118.57321887462238
+  }
+}

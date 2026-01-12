@@ -42,7 +42,7 @@ class CalibrationData:
     which are used to create personalized CCA reference signals.
     """
     trials_15hz: List[CalibrationTrial] = field(default_factory=list)
-    trials_10hz: List[CalibrationTrial] = field(default_factory=list)
+    trials_12hz: List[CalibrationTrial] = field(default_factory=list)
     sample_rate: float = 250.0
     n_channels: int = 8
     occipital_channels: List[int] = field(default_factory=lambda: [5, 6, 7])
@@ -50,7 +50,7 @@ class CalibrationData:
     
     # Computed reference templates
     _template_15hz: Optional[NDArray[np.float64]] = field(default=None, repr=False)
-    _template_10hz: Optional[NDArray[np.float64]] = field(default=None, repr=False)
+    _template_12hz: Optional[NDArray[np.float64]] = field(default=None, repr=False)
     
     def add_trial(self, frequency: float, eeg_data: NDArray[np.float64], 
                   timestamps: NDArray[np.float64], duration: float) -> None:
@@ -62,14 +62,33 @@ class CalibrationData:
             timestamps=timestamps
         )
         
-        if frequency == 15.0:
-            self.trials_15hz.append(trial)
-        elif frequency == 10.0:
-            self.trials_10hz.append(trial)
+        # Get target frequencies from screen calibration to determine which list to use
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            higher_freq, lower_freq = screen_cal.frequencies
+            
+            # Use tolerance to match frequencies (accounting for calibration differences)
+            if abs(frequency - higher_freq) < 0.5:  # Within 0.5 Hz
+                self.trials_15hz.append(trial)
+            elif abs(frequency - lower_freq) < 0.5:  # Within 0.5 Hz
+                self.trials_12hz.append(trial)
+            else:
+                # Fallback: determine by magnitude if frequencies don't match
+                if frequency > (higher_freq + lower_freq) / 2:
+                    self.trials_15hz.append(trial)
+                else:
+                    self.trials_12hz.append(trial)
+        except ImportError:
+            # Fallback to hard-coded check if screen_config unavailable
+            if abs(frequency - 15.0) < 0.5:
+                self.trials_15hz.append(trial)
+            elif abs(frequency - 12.0) < 0.5:
+                self.trials_12hz.append(trial)
         
         # Invalidate templates
         self._template_15hz = None
-        self._template_10hz = None
+        self._template_12hz = None
     
     def compute_templates(self, window_seconds: float = 0.5) -> None:
         """
@@ -78,11 +97,20 @@ class CalibrationData:
         Uses epoch averaging to extract the consistent SSVEP response
         while canceling out random noise.
         """
+        # Get target frequencies from screen calibration
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            higher_freq, lower_freq = screen_cal.frequencies
+        except ImportError:
+            # Fallback to defaults
+            higher_freq, lower_freq = 15.0, 12.0
+        
         self._template_15hz = self._compute_template_for_frequency(
-            self.trials_15hz, 15.0, window_seconds
+            self.trials_15hz, higher_freq, window_seconds
         )
-        self._template_10hz = self._compute_template_for_frequency(
-            self.trials_10hz, 10.0, window_seconds
+        self._template_12hz = self._compute_template_for_frequency(
+            self.trials_12hz, lower_freq, window_seconds
         )
     
     def _compute_template_for_frequency(
@@ -143,26 +171,35 @@ class CalibrationData:
         Returns templates that can be used directly in CCA classification.
         
         Returns:
-            Tuple of (ref_15hz, ref_10hz) arrays
+            Tuple of (ref_higher_freq, ref_lower_freq) arrays
         """
-        if self._template_15hz is None or self._template_10hz is None:
+        if self._template_15hz is None or self._template_12hz is None:
             self.compute_templates(window_seconds)
+        
+        # Get target frequencies from screen calibration
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            higher_freq, lower_freq = screen_cal.frequencies
+        except ImportError:
+            # Fallback to defaults
+            higher_freq, lower_freq = 15.0, 12.0
         
         # If we have real templates, use them
         # Otherwise fall back to synthetic
         window_samples = int(window_seconds * self.sample_rate)
         
         if self._template_15hz is not None:
-            ref_15hz = self._template_15hz
+            ref_higher = self._template_15hz
         else:
-            ref_15hz = self._generate_synthetic_reference(15.0, window_samples)
+            ref_higher = self._generate_synthetic_reference(higher_freq, window_samples)
         
-        if self._template_10hz is not None:
-            ref_10hz = self._template_10hz
+        if self._template_12hz is not None:
+            ref_lower = self._template_12hz
         else:
-            ref_10hz = self._generate_synthetic_reference(10.0, window_samples)
+            ref_lower = self._generate_synthetic_reference(lower_freq, window_samples)
         
-        return ref_15hz, ref_10hz
+        return ref_higher, ref_lower
     
     def _generate_synthetic_reference(
         self, 
@@ -186,11 +223,11 @@ class CalibrationData:
         """Get calibration statistics."""
         return {
             'n_trials_15hz': len(self.trials_15hz),
-            'n_trials_10hz': len(self.trials_10hz),
+            'n_trials_12hz': len(self.trials_12hz),
             'total_samples_15hz': sum(len(t.eeg_data) for t in self.trials_15hz),
-            'total_samples_10hz': sum(len(t.eeg_data) for t in self.trials_10hz),
+            'total_samples_12hz': sum(len(t.eeg_data) for t in self.trials_12hz),
             'has_template_15hz': self._template_15hz is not None,
-            'has_template_10hz': self._template_10hz is not None,
+            'has_template_12hz': self._template_12hz is not None,
             'sample_rate': self.sample_rate,
             'created_at': self.created_at
         }
@@ -213,22 +250,22 @@ class CalibrationData:
                 }
                 for t in self.trials_15hz
             ],
-            'trials_10hz': [
+            'trials_12hz': [
                 {
                     'frequency': t.frequency,
                     'duration': t.duration,
                     'eeg_data': t.eeg_data.tolist(),
                     'timestamps': t.timestamps.tolist()
                 }
-                for t in self.trials_10hz
+                for t in self.trials_12hz
             ]
         }
         
         # Also save computed templates if available
         if self._template_15hz is not None:
             data['template_15hz'] = self._template_15hz.tolist()
-        if self._template_10hz is not None:
-            data['template_10hz'] = self._template_10hz.tolist()
+        if self._template_12hz is not None:
+            data['template_12hz'] = self._template_12hz.tolist()
         
         with open(filepath, 'w') as f:
             json.dump(data, f)
@@ -259,8 +296,9 @@ class CalibrationData:
                 timestamps=np.array(t['timestamps'])
             ))
         
-        for t in data.get('trials_10hz', []):
-            cal.trials_10hz.append(CalibrationTrial(
+        # Support both old (trials_10hz) and new (trials_12hz) format for backward compatibility
+        for t in data.get('trials_12hz', data.get('trials_10hz', [])):
+            cal.trials_12hz.append(CalibrationTrial(
                 frequency=t['frequency'],
                 duration=t['duration'],
                 eeg_data=np.array(t['eeg_data']),
@@ -270,8 +308,11 @@ class CalibrationData:
         # Load pre-computed templates if available
         if 'template_15hz' in data:
             cal._template_15hz = np.array(data['template_15hz'])
-        if 'template_10hz' in data:
-            cal._template_10hz = np.array(data['template_10hz'])
+        # Support both old and new format
+        if 'template_12hz' in data:
+            cal._template_12hz = np.array(data['template_12hz'])
+        elif 'template_10hz' in data:
+            cal._template_12hz = np.array(data['template_10hz'])
         
         return cal
 
@@ -324,22 +365,32 @@ class CalibrationSession:
     @property
     def progress(self) -> float:
         """Get overall progress (0-1)."""
-        completed = len(self._calibration_data.trials_15hz) + len(self._calibration_data.trials_10hz)
+        completed = len(self._calibration_data.trials_15hz) + len(self._calibration_data.trials_12hz)
         return completed / self.total_trials
     
     def get_trial_sequence(self) -> List[float]:
         """
         Get the sequence of frequencies for calibration.
         
-        Alternates between frequencies to reduce order effects.
+        Uses actual screen calibration frequencies and alternates between them
+        to reduce order effects.
         """
+        # Get actual frequencies from screen calibration
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            higher_freq, lower_freq = screen_cal.frequencies
+        except ImportError:
+            # Fallback to defaults if screen_config unavailable
+            higher_freq, lower_freq = 15.0, 12.0
+        
         sequence = []
         for i in range(self.n_trials_per_frequency):
-            # Alternate: 15, 10, 15, 10, ...
+            # Alternate: higher, lower, higher, lower, ...
             if i % 2 == 0:
-                sequence.extend([15.0, 10.0])
+                sequence.extend([higher_freq, lower_freq])
             else:
-                sequence.extend([10.0, 15.0])
+                sequence.extend([lower_freq, higher_freq])
         return sequence[:self.total_trials]
     
     def start(self, sample_rate: float = 250.0, n_channels: int = 8) -> None:
@@ -426,7 +477,7 @@ if __name__ == "__main__":
     cal = CalibrationData(sample_rate=250, n_channels=8)
     
     # Simulate some trials
-    for freq in [15.0, 15.0, 10.0, 10.0]:
+    for freq in [15.0, 15.0, 12.0, 12.0]:
         n_samples = int(5 * 250)  # 5 seconds
         t = np.arange(n_samples) / 250
         
@@ -443,11 +494,11 @@ if __name__ == "__main__":
     cal.compute_templates()
     
     # Get references
-    ref_15, ref_10 = cal.get_cca_references()
+    ref_higher, ref_lower = cal.get_cca_references()
     
     print(f"Stats: {cal.get_statistics()}")
-    print(f"15Hz template shape: {ref_15.shape}")
-    print(f"10Hz template shape: {ref_10.shape}")
+    print(f"Higher freq template shape: {ref_higher.shape}")
+    print(f"Lower freq template shape: {ref_lower.shape}")
     
     # Test save/load
     cal.save("test_calibration.json")

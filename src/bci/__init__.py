@@ -19,6 +19,7 @@ from .classifier import SSVEPClassifier, AttentionTarget, ClassificationResult
 from .controller import BCICursorController, ControllerState
 from .score import BCIScore
 from .calibration import CalibrationData, CalibrationSession
+from .screen_config import ScreenCalibration, get_screen_calibration, reload_screen_calibration
 
 # LSL components (optional)
 try:
@@ -56,6 +57,10 @@ __all__ = [
     # Calibration
     'CalibrationData',
     'CalibrationSession',
+    # Screen Configuration
+    'ScreenCalibration',
+    'get_screen_calibration',
+    'reload_screen_calibration',
     # LSL
     'LSL_AVAILABLE',
     'LSLReceiver',

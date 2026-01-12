@@ -1,5 +1,5 @@
 ﻿# BCI-UPIC Project Progress Report
-## Date: 2026-01-09 17:04:54
+## Date: 2026-01-12 14:10:00
 
 ## Major Achievements
 
@@ -81,8 +81,18 @@
 - Added comprehensive logging throughout calibration process
 - Fixed filter state corruption after long calibration sessions
 
+### Recent Fixes (2026-01-12)
+- ✅ Fixed calibration sequence to use screen calibration frequencies (14.199Hz/11.397Hz) instead of hard-coded 15Hz/12Hz
+- ✅ Fixed calibration target identification (TOP vs BOTTOM) - now correctly alternates
+- ✅ Applied delayed-start pattern to main composition flickering (matches stable calibration protocol)
+- ✅ Separated indicator lights from flickering targets to prevent interference
+- ✅ Fixed flickering timing consistency during calibration (continuous flickering, no resets)
+- ✅ Reduced LSL recording timer from 4ms to 16ms to reduce event loop blocking
+
 ### Known Issues / Future Improvements
-- Calibration crash after completion (partially fixed with reset, needs monitoring)
+- Timer precision issues on Windows (QTimer fires at ~21ms instead of 8ms)
+- paintEvent throttling by Qt event loop (~100ms intervals)
+- Computational cost of LSL data pulling and flicker protocol needs optimization
 - Could add more sophisticated artifact rejection
 - Could add real-time visualization of EEG power spectrum
 - Could add session recording/replay functionality

@@ -263,8 +263,8 @@ class BCICursorController:
         result = ClassificationResult(
             target=target,
             confidence=confidence,
-            power_15hz=0.5 if target == AttentionTarget.UP else 0.3,
-            power_10hz=0.5 if target == AttentionTarget.DOWN else 0.3,
+            power_higher_freq=0.5 if target == AttentionTarget.UP else 0.3,
+            power_lower_freq=0.5 if target == AttentionTarget.DOWN else 0.3,
             raw_score=confidence if target == AttentionTarget.UP else -confidence
         )
         
@@ -357,8 +357,8 @@ class RandomController:
         result = ClassificationResult(
             target=self._current_direction,
             confidence=confidence,
-            power_15hz=0.5,
-            power_10hz=0.5,
+            power_higher_freq=0.5,
+            power_lower_freq=0.5,
             raw_score=0.0
         )
         

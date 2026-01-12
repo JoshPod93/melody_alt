@@ -2,11 +2,11 @@
 SSVEP Stimulus module for BCI-UPIC.
 
 Provides precise frequency flickering targets for SSVEP paradigm.
-Two targets flicker at 15Hz (top) and 10Hz (bottom), perfectly out of phase.
+Two targets flicker at 15Hz (top) and 12Hz (bottom), perfectly out of phase.
 
 The phase relationship is critical for SSVEP:
-- 15Hz target: flickers every 66.67ms (period = 1/15s)
-- 10Hz target: flickers every 100ms (period = 1/10s)
+- 15Hz target: flickers every 66.67ms (period = 1/15s), phase = 0°
+- 12Hz target: flickers every 83.33ms (period = 1/12s), phase = 180°
 - Out of phase means when one is ON, the other is OFF at their respective midpoints
 """
 
@@ -43,7 +43,7 @@ class FlickerTarget:
     position: str = "top"
     color_on: Tuple[int, int, int] = (255, 255, 255)  # White
     color_off: Tuple[int, int, int] = (30, 30, 30)    # Dark gray
-    size: Tuple[int, int] = (200, 80)
+    size: Tuple[int, int] = (100, 100)
     
     # Internal state
     _start_time: float = field(default=0.0, repr=False)
@@ -99,18 +99,18 @@ class SSVEPStimulus:
     Complete SSVEP stimulus system with two flickering targets.
     
     The paradigm uses:
-    - Top target: 15Hz (associated with "move up")
-    - Bottom target: 10Hz (associated with "move down")
+    - Top target: 15Hz (associated with "move up"), phase = 0°
+    - Bottom target: 12Hz (associated with "move down"), phase = 180°
     - Targets are perfectly out of phase (π radians offset)
     
     Attributes:
         top_frequency: Frequency of top target in Hz (default 15)
-        bottom_frequency: Frequency of bottom target in Hz (default 10)
+        bottom_frequency: Frequency of bottom target in Hz (default 12)
         duration: Total stimulus duration in seconds
         on_state_change: Optional callback when flicker state changes
     """
     top_frequency: float = 15.0
-    bottom_frequency: float = 10.0
+    bottom_frequency: float = 12.0
     duration: float = 10.0
     
     # Targets
@@ -127,34 +127,56 @@ class SSVEPStimulus:
     on_completion: Optional[Callable[[], None]] = None
     
     def __post_init__(self) -> None:
-        """Initialize the flickering targets."""
-        # Top target at 15Hz, phase 0 degrees (0 radians)
+        """Initialize the flickering targets using screen calibration if available."""
+        # Load screen calibration for frequencies and phases
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            
+            # Use calibrated frequencies if available
+            higher_freq, lower_freq = screen_cal.frequencies
+            phase_higher, phase_lower = screen_cal.phases
+            
+            # Update instance frequencies to match calibration
+            self.top_frequency = higher_freq
+            self.bottom_frequency = lower_freq
+        except ImportError:
+            # Fallback to defaults if screen_config not available
+            higher_freq = self.top_frequency
+            lower_freq = self.bottom_frequency
+            phase_higher = 0.0
+            phase_lower = np.pi
+        
+        # Top target (higher frequency), phase 0 degrees (0 radians)
         self.top_target = FlickerTarget(
-            frequency=self.top_frequency,
-            phase_offset=0.0,  # 0 degrees
+            frequency=higher_freq,
+            phase_offset=phase_higher,
             position="top",
             color_on=(255, 255, 255),  # Bright white
             color_off=(40, 40, 40),     # Dark
-            size=(300, 100)
+            size=(100, 100)
         )
         
-        # Bottom target at 10Hz, phase 180 degrees (π radians)
+        # Bottom target (lower frequency), phase 180 degrees (π radians)
         self.bottom_target = FlickerTarget(
-            frequency=self.bottom_frequency,
-            phase_offset=np.pi,  # 180 degrees
+            frequency=lower_freq,
+            phase_offset=phase_lower,
             position="bottom",
             color_on=(255, 255, 255),
             color_off=(40, 40, 40),
-            size=(300, 100)
+            size=(100, 100)
         )
     
     def start(self) -> None:
         """Start the stimulus presentation."""
-        self._start_time = time.perf_counter()
+        # Use a single precise timestamp for both targets to ensure perfect synchronization
+        start_timestamp = time.perf_counter()
+        self._start_time = start_timestamp
         self._running = True
         self._elapsed_time = 0.0
-        self.top_target.start()
-        self.bottom_target.start()
+        # Both targets start with the same timestamp to ensure phase accuracy
+        self.top_target._start_time = start_timestamp
+        self.bottom_target._start_time = start_timestamp
     
     def stop(self) -> None:
         """Stop the stimulus presentation."""

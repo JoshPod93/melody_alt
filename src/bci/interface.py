@@ -3,7 +3,7 @@ BCI Composition Interface for BCI-UPIC.
 
 Main real-time interface for BCI-controlled music composition.
 Features:
-- Two flickering SSVEP targets (15Hz top, 10Hz bottom)
+- Two flickering SSVEP targets (higher frequency top, lower frequency bottom)
 - Automatic horizontal playhead movement
 - Real-time cursor position visualization
 - Score display and playback controls
@@ -53,73 +53,223 @@ class FlickerWidget(QWidget):
     Widget displaying a flickering SSVEP target.
     
     Renders a rectangle that flickers at the specified frequency.
+    Uses real-time calculation in paintEvent for frame-synchronized rendering.
+    
+    EXACTLY matches the protocol used in screen calibration FlickerFrequencyDetector:
+    - Creates its own FlickerTarget instance
+    - Uses internal timer to call update()
+    - paintEvent calculates intensity in real-time using target.get_intensity(None)
     """
     
     def __init__(
         self,
         frequency: float,
+        phase_offset: float,
         position: str = "top",
         parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
         self.frequency = frequency
+        self.phase_offset = phase_offset
         self.position = position
-        self._intensity = 0.0
         self._is_active = False
         
-        # Colors
+        # Create our own FlickerTarget instance (same as screen calibration)
+        from .stimulus import FlickerTarget
+        self.target = FlickerTarget(
+            frequency=frequency,
+            phase_offset=phase_offset,
+            position=position,
+            size=(100, 100)
+        )
+        
+        # Colors - fixed border (no dynamic changes to avoid interfering with flickering)
         self.color_on = QColor(255, 255, 255)
         self.color_off = QColor(30, 30, 30)
-        self.border_color = QColor(100, 100, 100)
+        self.border_color = QColor(100, 100, 100)  # Fixed - never changes during flickering
         
-        # Size
-        self.setMinimumSize(300, 80)
+        # Phase monitoring for debugging
+        self._last_paint_time = None
+        self._paint_count = 0
+        self._expected_phase = 0.0
+        self._actual_phase = 0.0
+        
+        # Size - square targets centered on screen
+        self.setMinimumSize(100, 100)
         self.setMaximumHeight(100)
+        self.setMaximumWidth(100)
+        
+        # Timer for continuous updates - EXACTLY match screen calibration (no PreciseTimer)
+        self._update_timer = QTimer()
+        # Note: Screen calibration doesn't use PreciseTimer - using default timer type
+        # Interval will be set when starting (same as screen calibration)
+        
+        # Timer monitoring to detect if timer is actually firing
+        self._timer_fire_count = 0
+        self._last_timer_fire_time = None
+        
+        # Connect timer after monitoring vars are initialized
+        self._update_timer.timeout.connect(self._on_timer_fire)
     
-    def set_intensity(self, intensity: float) -> None:
-        """Set the current intensity (0-1)."""
-        self._intensity = intensity
-        self.update()
+    def _on_timer_fire(self) -> None:
+        """Wrapper to detect if timer is actually firing vs paintEvent being throttled."""
+        self._timer_fire_count += 1
+        current_time = time.perf_counter()
+        if self._last_timer_fire_time is not None:
+            dt = current_time - self._last_timer_fire_time
+            if self._timer_fire_count % 125 == 0:  # Log every ~1 second
+                if dt > 0.020:  # More than 20ms between timer fires
+                    print(f"[TIMER DEBUG] {self.position}: Timer slow! dt={dt*1000:.1f}ms (expected ~8ms), fires={self._timer_fire_count}")
+        self._last_timer_fire_time = current_time
+        self.update()  # Call update() to trigger paintEvent
     
     def set_active(self, active: bool) -> None:
-        """Set whether the target is active (flickering)."""
+        """
+        Set whether the target is active (flickering).
+        
+        EXACTLY matches screen calibration FlickerFrequencyDetector protocol:
+        - When activating: calls target.start() ONCE, starts timer with 8ms interval, calls update()
+        - When deactivating: stops timer, calls update()
+        """
+        was_active = self._is_active
         self._is_active = active
-        if not active:
-            self._intensity = 0.0
-        self.update()
+        
+        if active:
+            # EXACTLY match screen calibration start_calibration():
+            # - Set calibrating flag (we use _is_active instead)
+            # - Call target.start() ONCE to set start time
+            # - Start timer with 8ms interval
+            # - Call update() to trigger first paint
+            if not was_active:
+                self.target.start()  # Set start time ONCE (same as screen calibration)
+            if not self._update_timer.isActive():
+                self._update_timer.start(8)  # Start with 8ms interval (same as screen calibration)
+            self.update()  # Trigger first paint (same as screen calibration)
+        else:
+            # EXACTLY match screen calibration stop_calibration():
+            # - Clear calibrating flag (we use _is_active instead)
+            # - Stop timer
+            # - Call update() to trigger final paint
+            self._update_timer.stop()  # Stop timer (same as screen calibration)
+            self.update()  # Trigger final paint (same as screen calibration)
     
     def paintEvent(self, event) -> None:
-        """Paint the flickering target."""
+        """Paint the flickering target with real-time intensity calculation."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Calculate current color based on intensity
+        # Calculate intensity in real-time based on current time for frame synchronization
+        # EXACTLY matches screen calibration FlickerFrequencyDetector.paintEvent
         if self._is_active:
-            r = int(self.color_off.red() + self._intensity * (self.color_on.red() - self.color_off.red()))
-            g = int(self.color_off.green() + self._intensity * (self.color_on.green() - self.color_off.green()))
-            b = int(self.color_off.blue() + self._intensity * (self.color_on.blue() - self.color_off.blue()))
-            color = QColor(r, g, b)
+            # Get current time for phase monitoring
+            current_time = time.perf_counter()
+            
+            # Calculate expected phase based on elapsed time since target started
+            elapsed = current_time - self.target._start_time
+            self._expected_phase = (2 * np.pi * self.frequency * elapsed + self.phase_offset) % (2 * np.pi)
+            
+            # Call get_intensity without time parameter - it will use perf_counter internally
+            # This ensures frame-synchronized rendering regardless of timer updates
+            intensity = self.target.get_intensity(None)  # None triggers internal time calculation
+            
+            # Calculate actual phase from intensity (inverse of intensity calculation)
+            # intensity = (sin(phase) + 1) / 2, so phase = arcsin(2*intensity - 1)
+            if 0 < intensity < 1:
+                self._actual_phase = np.arcsin(2 * intensity - 1)
+            else:
+                self._actual_phase = 0.0 if intensity <= 0 else np.pi
+            
+            # Monitor paint rate and phase drift
+            self._paint_count += 1
+            if self._last_paint_time is not None:
+                dt = current_time - self._last_paint_time
+                phase_drift = abs(self._expected_phase - self._actual_phase)
+                
+                # Log if we detect significant drift or slow updates
+                if self._paint_count % 125 == 0:  # Log every ~1 second at 125Hz
+                    if dt > 0.020:  # More than 20ms between paints (should be ~8ms)
+                        print(f"[FLICKER DEBUG] {self.position}: Slow paint! dt={dt*1000:.1f}ms (expected ~8ms)")
+                    if phase_drift > 0.5:  # More than 0.5 radians drift
+                        print(f"[FLICKER DEBUG] {self.position}: Phase drift! {phase_drift:.3f} rad, expected={self._expected_phase:.3f}, actual={self._actual_phase:.3f}")
+            
+            self._last_paint_time = current_time
         else:
+            intensity = 0.0
+            self._last_paint_time = None
+            self._paint_count = 0
+        
+        # Calculate color - EXACTLY match screen calibration FlickerFrequencyDetector.paintEvent
+        if self._is_active:
+            # Draw flickering rectangle - EXACTLY same calculation as screen calibration
+            color = QColor(
+                int(self.color_off.red() + intensity * (self.color_on.red() - self.color_off.red())),
+                int(self.color_off.green() + intensity * (self.color_on.green() - self.color_off.green())),
+                int(self.color_off.blue() + intensity * (self.color_on.blue() - self.color_off.blue()))
+            )
+        else:
+            # Draw static (off) rectangle when not active (same as screen calibration)
             color = self.color_off
         
-        # Draw rounded rectangle
+        # Draw rounded rectangle - use fixed border color (never changes during flickering)
         rect = self.rect().adjusted(5, 5, -5, -5)
-        painter.setPen(QPen(self.border_color, 2))
+        painter.setPen(QPen(QColor(100, 100, 100), 2))  # Fixed border - never changes
         painter.setBrush(QBrush(color))
         painter.drawRoundedRect(rect, 10, 10)
         
-        # Draw frequency label
+        # Draw frequency label on two lines
         painter.setPen(QPen(QColor(150, 150, 150)))
-        font = QFont("Arial", 14, QFont.Weight.Bold)
+        font = QFont("Arial", 12, QFont.Weight.Bold)
         painter.setFont(font)
         
-        label = f"{self.frequency:.0f} Hz"
+        # First line: frequency
+        freq_label = f"{self.frequency:.0f} Hz"
+        # Second line: direction
         if self.position == "top":
-            label += " ▲ UP"
+            dir_label = "▲ UP"
         else:
-            label += " ▼ DOWN"
+            dir_label = "▼ DOWN"
         
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+        # Calculate text rectangles for two lines
+        font_metrics = painter.fontMetrics()
+        freq_height = font_metrics.height()
+        dir_height = font_metrics.height()
+        total_height = freq_height + dir_height + 2  # 2px spacing
+        
+        # Center vertically
+        start_y = rect.center().y() - total_height // 2
+        
+        # Draw first line (frequency)
+        freq_rect = QRectF(rect.left(), start_y, rect.width(), freq_height)
+        painter.drawText(freq_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, freq_label)
+        
+        # Draw second line (direction)
+        dir_rect = QRectF(rect.left(), start_y + freq_height + 2, rect.width(), dir_height)
+        painter.drawText(dir_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, dir_label)
+
+
+class IndicatorLight(QWidget):
+    """Separate indicator light widget - doesn't interfere with flickering."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(20, 20)
+        self._is_active = False
+    
+    def set_active(self, active: bool):
+        """Set indicator state (green = active, gray = inactive)."""
+        self._is_active = active
+        self.update()
+    
+    def paintEvent(self, event):
+        """Paint the indicator light."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Draw circle - green if active, gray if inactive
+        color = QColor(0, 255, 0) if self._is_active else QColor(100, 100, 100)
+        painter.setPen(QPen(color, 2))
+        painter.setBrush(QBrush(color))
+        painter.drawEllipse(self.rect().adjusted(2, 2, -2, -2))
 
 
 class CompositionCanvas(QWidget):
@@ -350,6 +500,9 @@ class BCICompositionWindow(QMainWindow):
         self.classifier = SSVEPClassifier()
         self.controller = BCICursorController(duration=10.0)
         
+        # Check screen calibration compatibility
+        self._check_screen_compatibility()
+        
         # LSL connection state
         self._use_lsl = False
         self._lsl_connected = False
@@ -385,9 +538,8 @@ class BCICompositionWindow(QMainWindow):
         self._mode = SessionMode.IDLE
         
         # Timers
-        self._stimulus_timer = QTimer()
-        self._stimulus_timer.timeout.connect(self._update_stimulus)
-        self._stimulus_timer.setInterval(16)  # ~60 FPS
+        # NOTE: We do NOT use _stimulus_timer anymore - FlickerWidget's internal timer handles updates
+        # This matches the screen calibration protocol exactly (single timer per widget)
         
         self._composition_timer = QTimer()
         self._composition_timer.timeout.connect(self._update_composition)
@@ -408,17 +560,44 @@ class BCICompositionWindow(QMainWindow):
         layout.setSpacing(10)
         layout.setContentsMargins(15, 15, 15, 15)
         
-        # Top target (15Hz - UP)
-        self.top_target = FlickerWidget(15.0, "top")
-        layout.addWidget(self.top_target)
+        # Get frequencies and phases from screen calibration for dynamic widget creation
+        # EXACTLY match screen calibration: each widget creates its own FlickerTarget
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            higher_freq, lower_freq = screen_cal.frequencies
+            phase_higher, phase_lower = screen_cal.phases
+        except ImportError:
+            higher_freq, lower_freq = 15.0, 12.0
+            phase_higher, phase_lower = 0.0, np.pi
+        
+        # Top target (higher frequency - UP) with separate indicator
+        top_container = QHBoxLayout()
+        top_container.setSpacing(10)
+        self.top_indicator = IndicatorLight()
+        self.top_target = FlickerWidget(higher_freq, phase_higher, "top")
+        top_container.addWidget(self.top_indicator)
+        top_container.addWidget(self.top_target)
+        top_container.addStretch()
+        top_widget = QWidget()
+        top_widget.setLayout(top_container)
+        layout.addWidget(top_widget, alignment=Qt.AlignmentFlag.AlignHCenter)
         
         # Composition canvas
         self.canvas = CompositionCanvas()
         layout.addWidget(self.canvas, stretch=1)
         
-        # Bottom target (10Hz - DOWN)
-        self.bottom_target = FlickerWidget(10.0, "bottom")
-        layout.addWidget(self.bottom_target)
+        # Bottom target (lower frequency - DOWN) with separate indicator
+        bottom_container = QHBoxLayout()
+        bottom_container.setSpacing(10)
+        self.bottom_indicator = IndicatorLight()
+        self.bottom_target = FlickerWidget(lower_freq, phase_lower, "bottom")
+        bottom_container.addWidget(self.bottom_indicator)
+        bottom_container.addWidget(self.bottom_target)
+        bottom_container.addStretch()
+        bottom_widget = QWidget()
+        bottom_widget.setLayout(bottom_container)
+        layout.addWidget(bottom_widget, alignment=Qt.AlignmentFlag.AlignHCenter)
         
         # Control panel
         control_panel = self._create_control_panel()
@@ -655,13 +834,9 @@ class BCICompositionWindow(QMainWindow):
         
         # Start
         self.controller.start()
-        self.stimulus.start()
+        # NOTE: No stimulus.start() - widgets are independent (same as screen calibration)
         
-        # Start timers
-        self._stimulus_timer.start()
-        self._composition_timer.start()
-        
-        # Update UI
+        # Update UI first
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.play_btn.setEnabled(False)
@@ -670,10 +845,14 @@ class BCICompositionWindow(QMainWindow):
         # self.random_btn.setEnabled(False)  # Removed - use calibration instead
         self.duration_spin.setEnabled(False)
         self.waveform_combo.setEnabled(False)
-        
-        self.top_target.set_active(True)
-        self.bottom_target.set_active(True)
         self.canvas.set_composing(True)
+        
+        # Use same pattern as calibration: small delay before starting flickering
+        # This ensures clean startup and prevents event loop blocking
+        QTimer.singleShot(200, lambda: self._start_composition_flickering())
+        
+        # Start composition timer AFTER flickering starts (same pattern as calibration)
+        # This prevents the composition timer from interfering with flickering startup
         
         self.status_label.setText("Composing... Focus on TOP target to move UP, BOTTOM target to move DOWN")
     
@@ -683,13 +862,14 @@ class BCICompositionWindow(QMainWindow):
         if self.marker_sender:
             self.marker_sender.send("Composition End")
         
-        self._stimulus_timer.stop()
+        # Stop flickering - EXACTLY match screen calibration protocol
+        # Widgets are independent, no need to call stimulus.stop()
+        self.top_target.set_active(False)
+        self.bottom_target.set_active(False)
         self._composition_timer.stop()
         
         self.controller.stop()
-        self.stimulus.stop()
-        
-        self.top_target.set_active(False)
+        # NOTE: No stimulus.stop() - widgets are independent (same as screen calibration)
         self.bottom_target.set_active(False)
         self.canvas.set_composing(False)
         
@@ -706,17 +886,28 @@ class BCICompositionWindow(QMainWindow):
         
         self.status_label.setText("Composition complete! Play or save your score.")
     
-    def _update_stimulus(self) -> None:
-        """Update flickering stimulus display."""
-        if not self.stimulus.is_running:
-            return
+    def _check_screen_compatibility(self) -> None:
+        """Check screen calibration compatibility and warn if frequencies aren't factors of refresh rate."""
+        from .screen_config import get_screen_calibration
         
-        # Get current intensities
-        top_intensity, bottom_intensity = self.stimulus.get_intensities()
+        screen_cal = get_screen_calibration()
         
-        # Update target widgets
-        self.top_target.set_intensity(top_intensity)
-        self.bottom_target.set_intensity(bottom_intensity)
+        if screen_cal.is_calibrated and screen_cal.refresh_rate_hz:
+            is_compatible, warnings = screen_cal.check_frequency_compatibility()
+            
+            if warnings:
+                warning_msg = "Screen Calibration Warning:\n\n" + "\n".join(warnings)
+                warning_msg += "\n\nThis may cause flickering inconsistencies."
+                warning_msg += "\nConsider adjusting monitor refresh rate or target frequencies."
+                
+                QMessageBox.warning(
+                    self,
+                    "Screen Compatibility Warning",
+                    warning_msg
+                )
+    
+    # REMOVED: _update_stimulus() - no longer needed
+    # FlickerWidget's internal timer handles all updates (same as screen calibration)
     
     def _toggle_lsl_connection(self) -> None:
         """Toggle LSL connection."""
@@ -787,8 +978,8 @@ class BCICompositionWindow(QMainWindow):
                 result = ClassificationResult(
                     target=AttentionTarget.NONE,
                     confidence=0.0,
-                    power_15hz=0.0,
-                    power_10hz=0.0,
+                    power_higher_freq=0.0,
+                    power_lower_freq=0.0,
                     raw_score=0.0
                 )
         elif self.EXPERIMENT_MODE:
@@ -809,17 +1000,25 @@ class BCICompositionWindow(QMainWindow):
                 result = ClassificationResult(
                     target=AttentionTarget.NONE,
                     confidence=0.0,
-                    power_15hz=0.0,
-                    power_10hz=0.0,
+                    power_higher_freq=0.0,
+                    power_lower_freq=0.0,
                     raw_score=0.0
                 )
             else:
+                # Get frequencies from screen calibration
+                try:
+                    from .screen_config import get_screen_calibration
+                    screen_cal = get_screen_calibration()
+                    higher_freq, lower_freq = screen_cal.frequencies
+                except ImportError:
+                    higher_freq, lower_freq = 15.0, 12.0
+                
                 # Simulate user attention based on cursor position
                 current_pitch = self.controller.position.pitch
                 if current_pitch < 0.4:
-                    self.eeg_source.set_target(15.0)  # Attend to UP
+                    self.eeg_source.set_target(higher_freq)  # Attend to UP
                 elif current_pitch > 0.6:
-                    self.eeg_source.set_target(10.0)  # Attend to DOWN
+                    self.eeg_source.set_target(lower_freq)  # Attend to DOWN
                 else:
                     self.eeg_source.set_target(None)  # No strong attention
                 
@@ -948,7 +1147,7 @@ class BCICompositionWindow(QMainWindow):
         
         # Start random test
         random_ctrl.start()
-        self.stimulus.start()
+        # NOTE: No stimulus.start() - widgets are independent (same as screen calibration)
         
         # Update UI
         self.start_btn.setEnabled(False)
@@ -969,10 +1168,8 @@ class BCICompositionWindow(QMainWindow):
                 self.canvas.set_cursor_position(pos)
                 self.canvas.set_trail([p.to_tuple() for p in random_ctrl.trail])
                 
-                # Update flicker
-                top_int, bottom_int = self.stimulus.get_intensities()
-                self.top_target.set_intensity(top_int)
-                self.bottom_target.set_intensity(bottom_int)
+                # Flicker is updated via FlickerWidget's internal timer -> paintEvent (same as screen calibration)
+                # No need to manually set intensity - it's calculated in real-time in paintEvent
                 
                 # Update progress
                 progress = random_ctrl._controller.progress
@@ -980,7 +1177,7 @@ class BCICompositionWindow(QMainWindow):
             else:
                 # Test complete
                 random_timer.stop()
-                self.stimulus.stop()
+                # NOTE: No stimulus.stop() - widgets are independent (same as screen calibration)
                 
                 self.top_target.set_active(False)
                 self.bottom_target.set_active(False)
@@ -1012,10 +1209,12 @@ class BCICompositionWindow(QMainWindow):
     
     def closeEvent(self, event) -> None:
         """Handle window close."""
-        self._stimulus_timer.stop()
+        # Stop flickering widgets (their internal timers)
+        self.top_target.set_active(False)
+        self.bottom_target.set_active(False)
         self._composition_timer.stop()
         self.controller.stop()
-        self.stimulus.stop()
+        # NOTE: No stimulus.stop() - widgets are independent (same as screen calibration)
         event.accept()
     
     # ==================== CALIBRATION ====================
@@ -1038,7 +1237,7 @@ class BCICompositionWindow(QMainWindow):
             "Calibration will record your brain's response to each flickering target.\n\n"
             "You will see:\n"
             "- 3 trials of 15Hz (look at TOP)\n"
-            "- 3 trials of 10Hz (look at BOTTOM)\n"
+            "- 3 trials of 12Hz (look at BOTTOM)\n"
             "- Each trial is 5 seconds with 2 second rest\n\n"
             "Total time: ~40 seconds\n\n"
             "Ready to begin?",
@@ -1073,14 +1272,31 @@ class BCICompositionWindow(QMainWindow):
         # self.random_btn.setEnabled(False)  # Removed - use calibration instead
         self.connect_lsl_btn.setEnabled(False)
         
-        # Start calibration sequence
+        # Start calibration sequence - use CalibrationSession to get dynamic sequence
+        from .calibration import CalibrationSession
+        cal_session = CalibrationSession(n_trials_per_frequency=3, trial_duration=5.0)
         self._cal_trial_index = 0
-        self._cal_sequence = [15.0, 10.0, 15.0, 10.0, 15.0, 10.0]  # Alternating
+        self._cal_sequence = cal_session.get_trial_sequence()  # Dynamic frequencies from screen calibration
         self._cal_trial_duration = 5.0
         self._cal_rest_duration = 2.0
         
+        # Get frequencies for display/comparison
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            self._cal_higher_freq, self._cal_lower_freq = screen_cal.frequencies
+        except ImportError:
+            self._cal_higher_freq, self._cal_lower_freq = 15.0, 12.0
+        
         self.status_label.setText("Calibration starting... Get ready!")
         self.canvas.clear()
+        
+        # Initialize indicators (both off at start - flickering will start when indicator lights)
+        self.top_indicator.set_active(False)
+        self.bottom_indicator.set_active(False)
+        
+        # Do NOT start flickering yet - wait for indicator to light up first
+        # Flickering will start when trial begins (after indicator lights)
         
         # Start with rest period
         QTimer.singleShot(1000, self._cal_start_rest)
@@ -1093,15 +1309,18 @@ class BCICompositionWindow(QMainWindow):
                 return
             
             freq = self._cal_sequence[self._cal_trial_index]
-            target = "TOP (15Hz)" if freq == 15.0 else "BOTTOM (10Hz)"
+            # Compare against higher/lower frequencies (with tolerance)
+            is_higher = abs(freq - self._cal_higher_freq) < 0.5
+            target = f"TOP ({self._cal_higher_freq:.1f}Hz)" if is_higher else f"BOTTOM ({self._cal_lower_freq:.1f}Hz)"
             
             self.status_label.setText(
                 f"REST - Next: Look at {target} - Trial {self._cal_trial_index + 1}/{len(self._cal_sequence)}"
             )
             
-            # Turn off flicker during rest
-            self.top_target.set_active(False)
-            self.bottom_target.set_active(False)
+            # IMPORTANT: Keep flickering running during rest periods!
+            # Do NOT call set_active(False) - this would reset the start time and cause drift
+            # The flickering must remain active throughout the entire calibration session
+            # This matches screen calibration behavior - flickering runs continuously
             
             # After rest, start trial
             QTimer.singleShot(int(self._cal_rest_duration * 1000), self._cal_start_trial)
@@ -1116,7 +1335,9 @@ class BCICompositionWindow(QMainWindow):
         """Start a calibration trial."""
         try:
             freq = self._cal_sequence[self._cal_trial_index]
-            target = "TOP" if freq == 15.0 else "BOTTOM"
+            # Compare against higher/lower frequencies (with tolerance)
+            is_higher = abs(freq - self._cal_higher_freq) < 0.5
+            target = "TOP" if is_higher else "BOTTOM"
             
             print(f"[CALIBRATION] Starting trial {self._cal_trial_index + 1}: {freq}Hz ({target})")
             self.status_label.setText(f"LOOK AT {target}! Recording {freq}Hz response...")
@@ -1126,24 +1347,19 @@ class BCICompositionWindow(QMainWindow):
             self._cal_timestamp_buffer = []
             self._cal_no_data_count = 0
             
-            # Start flickering
-            self.stimulus.start()
-            self._stimulus_timer.start()
-            self.top_target.set_active(True)
-            self.bottom_target.set_active(True)
-            
-            # Highlight the target by changing border color
-            if freq == 15.0:
-                self.top_target.border_color = QColor(0, 255, 0)  # Green border
-                self.bottom_target.border_color = QColor(100, 100, 100)  # Normal
+            # CORRECT SEQUENCE: Indicator lights FIRST, then flickering starts
+            # This gives user time to see which target to look at before flickering begins
+            is_higher = abs(freq - self._cal_higher_freq) < 0.5
+            if is_higher:
+                self.top_indicator.set_active(True)  # Green indicator - lights FIRST
+                self.bottom_indicator.set_active(False)
             else:
-                self.bottom_target.border_color = QColor(0, 255, 0)  # Green border
-                self.top_target.border_color = QColor(100, 100, 100)  # Normal
+                self.bottom_indicator.set_active(True)  # Green indicator - lights FIRST
+                self.top_indicator.set_active(False)
             
-            # Start recording timer (4ms = ~250Hz)
-            self._cal_record_timer = QTimer()
-            self._cal_record_timer.timeout.connect(self._cal_record_sample)
-            self._cal_record_timer.start(4)
+            # Small delay to let user see the indicator, then start flickering
+            # Both targets flicker (for consistent timing), but indicator shows which to focus on
+            QTimer.singleShot(200, lambda: self._start_trial_flickering())
             
             # End trial after duration
             QTimer.singleShot(int(self._cal_trial_duration * 1000), self._cal_end_trial)
@@ -1153,6 +1369,34 @@ class BCICompositionWindow(QMainWindow):
             import traceback
             traceback.print_exc()
             self._cal_finish()
+    
+    def _start_trial_flickering(self) -> None:
+        """Start flickering for the current trial (called after indicator lights)."""
+        # Start flickering targets - this ensures consistent timing
+        # Both targets flicker, but indicator shows which one to focus on
+        if not self.top_target._is_active:
+            self.top_target.set_active(True)
+        if not self.bottom_target._is_active:
+            self.bottom_target.set_active(True)
+        
+        # Start recording timer (16ms = ~62.5Hz) - reduced frequency to avoid blocking event loop
+        # The flickering timer (8ms) needs priority, so recording can be slower
+        self._cal_record_timer = QTimer()
+        self._cal_record_timer.timeout.connect(self._cal_record_sample)
+        self._cal_record_timer.start(16)  # Reduced from 4ms to avoid blocking flickering updates
+    
+    def _start_composition_flickering(self) -> None:
+        """Start flickering for main composition (same pattern as calibration)."""
+        # Use EXACTLY the same pattern as calibration for consistent flickering
+        # Start flickering targets
+        if not self.top_target._is_active:
+            self.top_target.set_active(True)
+        if not self.bottom_target._is_active:
+            self.bottom_target.set_active(True)
+        
+        # Start composition timer AFTER flickering is running
+        # This prevents the composition timer from interfering with flickering startup
+        self._composition_timer.start()
     
     def _cal_record_sample(self) -> None:
         """Record EEG sample during calibration trial."""
@@ -1191,15 +1435,15 @@ class BCICompositionWindow(QMainWindow):
             if hasattr(self, '_cal_record_timer') and self._cal_record_timer is not None:
                 self._cal_record_timer.stop()
             
-            # Stop flickering
-            self._stimulus_timer.stop()
-            self.stimulus.stop()
+            # Stop recording timer
+            # Stop flickering at end of trial - will restart when next trial begins
+            # This matches user expectation: indicator lights, then flickering starts
             self.top_target.set_active(False)
             self.bottom_target.set_active(False)
             
-            # Reset border colors
-            self.top_target.border_color = QColor(100, 100, 100)
-            self.bottom_target.border_color = QColor(100, 100, 100)
+            # Reset indicators
+            self.top_indicator.set_active(False)
+            self.bottom_indicator.set_active(False)
             
             # Save trial data
             freq = self._cal_sequence[self._cal_trial_index]
@@ -1240,6 +1484,11 @@ class BCICompositionWindow(QMainWindow):
     def _cal_finish(self) -> None:
         """Finish calibration and compute templates."""
         try:
+            # Stop flickering now that calibration is complete
+            # This is the ONLY place we stop flickering during calibration
+            self.top_target.set_active(False)
+            self.bottom_target.set_active(False)
+            
             self._mode = SessionMode.IDLE
             
             # Reset preprocessor filter state to prevent numerical issues
@@ -1251,7 +1500,7 @@ class BCICompositionWindow(QMainWindow):
             print(f"[CALIBRATION] Stats: {stats}")
             
             # Check if we got any data
-            if stats['n_trials_15hz'] == 0 and stats['n_trials_10hz'] == 0:
+            if stats['n_trials_15hz'] == 0 and stats['n_trials_12hz'] == 0:
                 print("[CALIBRATION] ERROR: No trials recorded!")
                 QMessageBox.warning(
                     self,
@@ -1288,9 +1537,9 @@ class BCICompositionWindow(QMainWindow):
                     self,
                     "Calibration Complete",
                     f"Calibration successful!\n\n"
-                    f"15Hz trials: {stats['n_trials_15hz']}\n"
-                    f"10Hz trials: {stats['n_trials_10hz']}\n"
-                    f"Total samples: {stats['total_samples_15hz'] + stats['total_samples_10hz']}\n\n"
+                    f"Higher freq trials: {stats['n_trials_15hz']}\n"
+                    f"Lower freq trials: {stats['n_trials_12hz']}\n"
+                    f"Total samples: {stats['total_samples_15hz'] + stats['total_samples_12hz']}\n\n"
                     f"Saved to: {cal_path.absolute()}\n\n"
                     f"The classifier will now use your personalized brain responses!"
                 )
