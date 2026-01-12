@@ -4,82 +4,83 @@
 ## Major Achievements
 
 ### 1. Complete BCI System Implementation
-- âœ… SSVEP-based brain-computer interface for musical composition
-- âœ… Real-time EEG signal processing pipeline
-- âœ… Graphical additive synthesizer integration
-- âœ… Automatic cursor movement (horizontal) with BCI-controlled vertical movement
+- ✅ SSVEP-based brain-computer interface for musical composition
+- ✅ Real-time EEG signal processing pipeline
+- ✅ Graphical additive synthesizer integration
+- ✅ Automatic cursor movement (horizontal) with BCI-controlled vertical movement
 
 ### 2. g.tec Unicorn Black Integration
-- âœ… LSL (Lab Streaming Layer) integration for live EEG streaming
-- âœ… Automatic detection and handling of 17-channel Unicorn streams
-- âœ… Extraction of 8 EEG channels from hybrid stream (8 EEG + 9 auxiliary)
-- âœ… Support for Unicorn Suite LSL Interface
-- âœ… Connection verification scripts and setup documentation
+- ✅ LSL (Lab Streaming Layer) integration for live EEG streaming
+- ✅ Automatic detection and handling of 17-channel Unicorn streams
+- ✅ Extraction of 8 EEG channels from hybrid stream (8 EEG + 9 auxiliary)
+- ✅ Support for Unicorn Suite LSL Interface
+- ✅ Connection verification scripts and setup documentation
 
 ### 3. SSVEP Stimulus System
-- âœ… Dual-frequency flickering targets (15Hz top, 10Hz bottom)
-- âœ… Perfect phase alignment (0Â° for 15Hz, 180Â° for 10Hz)
-- âœ… Real-time visual stimulus rendering with PyQt6
-- âœ… Smooth flickering at target frequencies
+- ✅ Dual-frequency flickering targets (15Hz top, 12Hz bottom)
+- ✅ Perfect phase alignment (0° for 15Hz, 180° for 12Hz)
+- ✅ Real-time visual stimulus rendering with PyQt6
+- ✅ Frame-synchronized flickering using paintEvent
+- ✅ Screen calibration system for dynamic frequency adjustment
+- ✅ Generic frequency labels (higher_freq/lower_freq) for portability
+- ✅ Stable flickering protocol matching screen calibration
 
 ### 4. Signal Processing Pipeline
-- âœ… Bandpass filtering (5-40Hz) for SSVEP frequency range
-- âœ… Notch filtering (50Hz/60Hz) for power line noise removal
-- âœ… Running statistics for adaptive normalization
-- âœ… Artifact detection and rejection
-- âœ… Numerical stability improvements (NaN/Inf checks, variance clamping)
+- ✅ Bandpass filtering (5-40Hz) for SSVEP frequency range
+- ✅ Notch filtering (50Hz/60Hz) for power line noise removal
+- ✅ Running statistics for adaptive normalization
+- ✅ Artifact detection and rejection
+- ✅ Numerical stability improvements (NaN/Inf checks, variance clamping)
 
 ### 5. SSVEP Classification
-- âœ… Canonical Correlation Analysis (CCA) implementation
-- âœ… FFT-based power spectrum analysis
-- âœ… Occipital channel selection (PO7, Oz, PO8)
-- âœ… Real-time classification with configurable window size
-- âœ… Calibration system for personalized reference signals
+- ✅ Canonical Correlation Analysis (CCA) implementation
+- ✅ FFT-based power spectrum analysis
+- ✅ Occipital channel selection (PO7, Oz, PO8)
+- ✅ Real-time classification with configurable window size
+- ✅ Calibration system for personalized reference signals
+- ✅ Screen calibration integration for accurate frequency matching
 
 ### 6. Calibration System
-- âœ… User-specific SSVEP response recording
-- âœ… Template generation from recorded epochs
-- âœ… Calibration data persistence (JSON format)
-- âœ… Integration with CCA classifier for improved accuracy
-- âœ… Calibration workflow with visual feedback
+- ✅ User-specific SSVEP response recording
+- ✅ Template generation from recorded epochs
+- ✅ Calibration data persistence (JSON format)
+- ✅ Integration with CCA classifier for improved accuracy
+- ✅ Calibration workflow with visual feedback
+- ✅ Dynamic frequency sequence based on screen calibration
 
 ### 7. Music Generation Integration
-- âœ… UPIC Arc generation from BCI cursor trail
-- âœ… Score playback through existing synthesizer
-- âœ… Wavetable synthesis integration
-- âœ… Stereo audio output
+- ✅ UPIC Arc generation from BCI cursor trail
+- ✅ Score playback through existing synthesizer
+- ✅ Wavetable synthesis integration
+- ✅ Stereo audio output
 
 ### 8. User Interface
-- âœ… PyQt6-based GUI for BCI composition
-- âœ… Real-time visualization of cursor movement
-- âœ… LSL connection status indicators
-- âœ… Calibration controls and status
-- âœ… Experiment mode (disables simulation, enforces real data)
+- ✅ PyQt6-based GUI for BCI composition
+- ✅ Real-time visualization of cursor movement
+- ✅ LSL connection status indicators
+- ✅ Calibration controls and status
+- ✅ Experiment mode (disables simulation, enforces real data)
+- ✅ Indicator lights for calibration targets
 
 ### 9. Code Quality & Robustness
-- âœ… Comprehensive error handling
-- âœ… Extensive logging for debugging
-- âœ… Numerical stability fixes
-- âœ… Channel extraction fixes for Unicorn streams
-- âœ… Filter state reset after calibration
+- ✅ Comprehensive error handling
+- ✅ Extensive logging for debugging
+- ✅ Numerical stability fixes
+- ✅ Channel extraction fixes for Unicorn streams
+- ✅ Filter state reset after calibration
+- ✅ Screen calibration system for portability
 
 ## Current Status
 
 ### Working Features
-- âœ… LSL connection to Unicorn Black
-- âœ… Real-time EEG data streaming and processing
-- âœ… SSVEP stimulus rendering
-- âœ… Calibration data recording and saving
-- âœ… Template generation from calibration
-- âœ… Score generation from cursor trail
-- âœ… Audio playback
-
-### Recent Fixes
-- Fixed 17-channel Unicorn stream handling (extract 8 EEG channels before processing)
-- Fixed numerical stability issues in preprocessing (filter initialization, variance overflow)
-- Added calibration file cleanup at start of new sessions
-- Added comprehensive logging throughout calibration process
-- Fixed filter state corruption after long calibration sessions
+- ✅ LSL connection to Unicorn Black
+- ✅ Real-time EEG data streaming and processing
+- ✅ SSVEP stimulus rendering (stable during calibration)
+- ✅ Calibration data recording and saving
+- ✅ Template generation from calibration
+- ✅ Score generation from cursor trail
+- ✅ Audio playback
+- ✅ Screen calibration with dynamic frequency detection
 
 ### Recent Fixes (2026-01-12)
 - ✅ Fixed calibration sequence to use screen calibration frequencies (14.199Hz/11.397Hz) instead of hard-coded 15Hz/12Hz
@@ -88,11 +89,18 @@
 - ✅ Separated indicator lights from flickering targets to prevent interference
 - ✅ Fixed flickering timing consistency during calibration (continuous flickering, no resets)
 - ✅ Reduced LSL recording timer from 4ms to 16ms to reduce event loop blocking
+- ✅ Fixed 17-channel Unicorn stream handling (extract 8 EEG channels before processing)
+- ✅ Fixed numerical stability issues in preprocessing (filter initialization, variance overflow)
+- ✅ Added calibration file cleanup at start of new sessions
+- ✅ Added comprehensive logging throughout calibration process
+- ✅ Fixed filter state corruption after long calibration sessions
 
 ### Known Issues / Future Improvements
-- Timer precision issues on Windows (QTimer fires at ~21ms instead of 8ms)
-- paintEvent throttling by Qt event loop (~100ms intervals)
-- Computational cost of LSL data pulling and flicker protocol needs optimization
+- ⚠️ Timer precision issues on Windows (QTimer fires at ~21ms instead of 8ms)
+- ⚠️ paintEvent throttling by Qt event loop (~100ms intervals)
+- ⚠️ **HIGH PRIORITY**: Computational cost of LSL data pulling and flicker protocol needs radical optimization
+  - Research document created: `docs/PERFORMANCE_OPTIMIZATION_RESEARCH.md`
+  - Recommended solutions: Cython, OpenGL rendering, Windows multimedia timers, C++ extensions
 - Could add more sophisticated artifact rejection
 - Could add real-time visualization of EEG power spectrum
 - Could add session recording/replay functionality
@@ -115,16 +123,28 @@
   - score.py - Score generation and playback
   - calibration.py - Calibration system
   - lsl_stream.py - LSL integration
-- src/core/ - UPIC synthesizer core (reused)
-- ci_main.py - Entry point for BCI application
-- calibration_data.json - User calibration data
+  - screen_config.py - Screen calibration configuration
+- screen_calibration/ - Screen calibration tools
+  - screen_calibration.py - Standalone calibration GUI
+  - screen_calibration.json - Calibration results
+- docs/ - Documentation
+  - PERFORMANCE_OPTIMIZATION_RESEARCH.md - Performance optimization strategies
+  - Integration guides for team members
+  - Checklists and TODO lists
+- excess/ - Unused/junk scripts
 
 ## Next Steps
-1. Test full composition workflow with calibrated classifier
-2. Verify audio playback quality
-3. Monitor for any remaining stability issues
-4. Consider adding session recording/replay
-5. Optimize classifier parameters based on real-world performance
+1. **Performance Optimization** (HIGH PRIORITY)
+   - Implement Windows multimedia timer for better flicker precision
+   - Consider Cython for LSL data pulling
+   - Evaluate OpenGL-based flicker rendering
+   - See `docs/PERFORMANCE_OPTIMIZATION_RESEARCH.md` for detailed plan
+
+2. Test full composition workflow with calibrated classifier
+3. Verify audio playback quality
+4. Monitor for any remaining stability issues
+5. Consider adding session recording/replay
+6. Optimize classifier parameters based on real-world performance
 
 ---
-Generated: 2026-01-09 17:04:54
+Generated: 2026-01-12 14:10:00
