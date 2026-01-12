@@ -2,13 +2,27 @@
 EEG Preprocessing module for BCI-UPIC.
 
 Provides real-time signal processing for SSVEP detection:
-- Bandpass filtering (focus on 8-20Hz for our 10Hz and 15Hz targets)
+- Common Average Reference (CAR) - removes common noise, CRITICAL for SSVEP
+- Bandpass filtering (focus on 5-25Hz for our 12Hz and 15Hz targets + harmonics)
 - Notch filtering for powerline noise (50/60Hz)
 - Artifact rejection
 - Signal normalization
 - LSL stream integration for g.tec Unicorn Black
 
 Designed to be lightweight for real-time processing.
+
+NOTE: The g.tec Unicorn Black has built-in reference/ground electrodes.
+The device also has separate left/right mastoid sensors that can be placed
+on the mastoid bones behind the ears. If these are placed and appear in the
+LSL stream, you can use them as a reference instead of CAR.
+
+For SSVEP, CAR is typically preferred because:
+- Mastoid sensors can pick up muscle artifacts
+- CAR reduces common noise more effectively with 8 channels
+- CAR is standard practice for SSVEP studies
+
+However, if mastoid sensors are properly placed and you prefer mastoid reference,
+you can enable it by setting use_mastoid_ref=True and providing the channel indices.
 """
 
 from __future__ import annotations
@@ -53,6 +67,9 @@ class EEGPreprocessor:
     bandpass_high: float = 25.0  # Include first harmonic of 15Hz (30Hz)
     notch_freq: float = 50.0     # 50Hz for EU, 60Hz for US
     buffer_seconds: float = 2.0   # 2 second rolling buffer
+    use_car: bool = True  # Common Average Reference - CRITICAL for SSVEP signal quality
+    use_mastoid_ref: bool = False  # Use mastoid reference if available (overrides CAR)
+    mastoid_channel_indices: Optional[List[int]] = None  # Indices of mastoid channels if available
     
     # Filter states
     _bandpass_filter: FilterCoefficients = field(init=False, repr=False)
@@ -148,6 +165,16 @@ class EEGPreprocessor:
         if len(sample) != self.n_channels:
             raise ValueError(f"Expected {self.n_channels} channels, got {len(sample)}")
         
+        # STEP 1: Reference (CAR or Mastoid)
+        # Option A: Mastoid reference (if available and enabled)
+        if self.use_mastoid_ref and self.mastoid_channel_indices is not None:
+            mastoid_ref = np.mean(sample[self.mastoid_channel_indices])
+            sample = sample - mastoid_ref
+        # Option B: Common Average Reference (CAR) - default for SSVEP
+        elif self.use_car:
+            car_reference = np.mean(sample)
+            sample = sample - car_reference
+        
         filtered = np.zeros(self.n_channels)
         
         for ch in range(self.n_channels):
@@ -182,7 +209,9 @@ class EEGPreprocessor:
     
     def process_chunk(self, chunk: NDArray[np.float64]) -> NDArray[np.float64]:
         """
-        Process a chunk of EEG data (multiple samples).
+        Process a chunk of EEG data (multiple samples) - OPTIMIZED VERSION.
+        
+        Uses vectorized operations for much faster processing.
         
         Args:
             chunk: Array of shape (n_samples, n_channels)
@@ -190,13 +219,59 @@ class EEGPreprocessor:
         Returns:
             Filtered and normalized chunk of same shape
         """
-        n_samples = chunk.shape[0]
-        output = np.zeros_like(chunk)
+        if chunk.shape[0] == 0:
+            return chunk
         
-        for i in range(n_samples):
-            output[i] = self.process_sample(chunk[i])
+        # VECTORIZED: Process all channels at once (much faster than sample-by-sample)
         
-        return output
+        # STEP 1: Reference (CAR or Mastoid)
+        # Option A: Mastoid reference (if available and enabled)
+        if self.use_mastoid_ref and self.mastoid_channel_indices is not None:
+            # Use average of mastoid channels as reference
+            mastoid_ref = np.mean(chunk[:, self.mastoid_channel_indices], axis=1, keepdims=True)
+            chunk = chunk - mastoid_ref
+        # Option B: Common Average Reference (CAR) - default for SSVEP
+        elif self.use_car:
+            # Compute mean across all channels for each sample
+            car_reference = np.mean(chunk, axis=1, keepdims=True)  # Shape: (n_samples, 1)
+            chunk = chunk - car_reference  # Subtract CAR from each channel
+        
+        filtered = np.zeros_like(chunk)
+        
+        # STEP 2: Apply filters channel by channel (but vectorized per channel)
+        for ch in range(self.n_channels):
+            # Bandpass filter entire channel at once
+            bp_out, self._bp_zi[ch] = signal.lfilter(
+                self._bandpass_filter.b,
+                self._bandpass_filter.a,
+                chunk[:, ch],
+                zi=self._bp_zi[ch]
+            )
+            
+            # Notch filter entire channel at once
+            notch_out, self._notch_zi[ch] = signal.lfilter(
+                self._notch_filter.b,
+                self._notch_filter.a,
+                bp_out,
+                zi=self._notch_zi[ch]
+            )
+            
+            filtered[:, ch] = notch_out
+        
+        # Update statistics in batch (more efficient)
+        for sample in filtered:
+            self._update_statistics(sample)
+        
+        # Normalize in batch
+        std = np.sqrt(self._running_var + 1e-8)
+        normalized = (filtered - self._running_mean) / std
+        normalized = np.clip(normalized, -10, 10)
+        
+        # Add to buffer
+        for sample in normalized:
+            self._buffer.append(sample)
+        
+        return normalized
     
     def _update_statistics(self, sample: NDArray[np.float64]) -> None:
         """Update running mean and variance using Welford's algorithm."""

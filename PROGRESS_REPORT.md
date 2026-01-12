@@ -1,5 +1,5 @@
 ﻿# BCI-UPIC Project Progress Report
-## Date: 2026-01-12 14:10:00
+## Date: 2026-01-27 (Latest Update)
 
 ## Major Achievements
 
@@ -26,11 +26,17 @@
 - ✅ Stable flickering protocol matching screen calibration
 
 ### 4. Signal Processing Pipeline
-- ✅ Bandpass filtering (5-40Hz) for SSVEP frequency range
+- ✅ **Common Average Reference (CAR)** - CRITICAL for SSVEP signal quality
+  - Removes common-mode noise shared across all channels
+  - Applied before filtering for optimal noise reduction
+  - Standard practice for SSVEP studies
+  - Optional mastoid reference support (if sensors are placed)
+- ✅ Bandpass filtering (5-25Hz) for SSVEP frequency range + harmonics
 - ✅ Notch filtering (50Hz/60Hz) for power line noise removal
 - ✅ Running statistics for adaptive normalization
 - ✅ Artifact detection and rejection
 - ✅ Numerical stability improvements (NaN/Inf checks, variance clamping)
+- ✅ Vectorized processing for improved performance
 
 ### 5. SSVEP Classification
 - ✅ Canonical Correlation Analysis (CCA) implementation
@@ -82,7 +88,7 @@
 - ✅ Audio playback
 - ✅ Screen calibration with dynamic frequency detection
 
-### Recent Fixes (2026-01-12)
+### Recent Fixes (2026-01-12 to 2026-01-27)
 - ✅ Fixed calibration sequence to use screen calibration frequencies (14.199Hz/11.397Hz) instead of hard-coded 15Hz/12Hz
 - ✅ Fixed calibration target identification (TOP vs BOTTOM) - now correctly alternates
 - ✅ Applied delayed-start pattern to main composition flickering (matches stable calibration protocol)
@@ -94,6 +100,13 @@
 - ✅ Added calibration file cleanup at start of new sessions
 - ✅ Added comprehensive logging throughout calibration process
 - ✅ Fixed filter state corruption after long calibration sessions
+- ✅ **Added Common Average Reference (CAR)** - Critical improvement for signal quality
+  - Removes common-mode noise (powerline, muscle artifacts, etc.)
+  - Applied before filtering in both sample-by-sample and chunk processing
+  - Should significantly improve SSVEP classification accuracy
+  - Optional mastoid reference support added (if sensors are placed)
+- ✅ Updated documentation to clarify Unicorn Black reference/ground setup
+- ✅ Clarified that mastoid sensors are optional and not required for SSVEP
 
 ### Known Issues / Future Improvements
 - ⚠️ Timer precision issues on Windows (QTimer fires at ~21ms instead of 8ms)

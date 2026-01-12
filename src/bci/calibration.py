@@ -1,12 +1,17 @@
 """
 SSVEP Calibration module for BCI-UPIC.
 
-Captures real SSVEP responses from the user to create personalized
-CCA reference signals. This accounts for:
+Captures real SSVEP responses from the user to refine CCA reference signals.
+Uses standard CCA structure (sin/cos at fundamental + harmonics) with
+template-informed phase/frequency parameters. This accounts for:
 - Screen refresh rate/timing inaccuracies
 - Individual neural response patterns
 - Electrode placement variations
 - Hardware-specific signal characteristics
+
+Best Practice: References are always in standard sin/cos format (shape: n_samples, 2*n_harmonics)
+for optimal CCA performance. Templates are used to extract refined phase/frequency parameters,
+not as direct reference signals.
 """
 
 from __future__ import annotations
@@ -164,60 +169,148 @@ class CalibrationData:
         
         return template
     
-    def get_cca_references(self, window_seconds: float = 0.5) -> Tuple[NDArray, NDArray]:
+    def get_cca_references(self, window_seconds: float = 0.5, n_harmonics: int = 2) -> Tuple[NDArray, NDArray]:
         """
         Get CCA reference signals from calibration data.
         
-        Returns templates that can be used directly in CCA classification.
+        Uses standard CCA structure: sin/cos components at fundamental + harmonics.
+        If templates are available, extracts phase/frequency from them to refine
+        the synthetic references.
         
         Returns:
             Tuple of (ref_higher_freq, ref_lower_freq) arrays
+            Each array has shape (n_samples, 2*n_harmonics) for standard CCA
         """
         if self._template_15hz is None or self._template_12hz is None:
             self.compute_templates(window_seconds)
         
-        # Get target frequencies from screen calibration
+        # Get target frequencies and phases from screen calibration
         try:
             from .screen_config import get_screen_calibration
             screen_cal = get_screen_calibration()
             higher_freq, lower_freq = screen_cal.frequencies
+            higher_phase, lower_phase = screen_cal.phases
         except ImportError:
             # Fallback to defaults
             higher_freq, lower_freq = 15.0, 12.0
+            higher_phase, lower_phase = 0.0, np.pi
         
-        # If we have real templates, use them
-        # Otherwise fall back to synthetic
         window_samples = int(window_seconds * self.sample_rate)
         
+        # Generate references with template-informed parameters if available
         if self._template_15hz is not None:
-            ref_higher = self._template_15hz
+            # Extract phase/frequency from template to refine synthetic reference
+            refined_freq, refined_phase = self._extract_frequency_phase(
+                self._template_15hz, higher_freq, higher_phase
+            )
+            ref_higher = self._generate_synthetic_reference(
+                refined_freq, window_samples, n_harmonics, refined_phase
+            )
         else:
-            ref_higher = self._generate_synthetic_reference(higher_freq, window_samples)
+            ref_higher = self._generate_synthetic_reference(
+                higher_freq, window_samples, n_harmonics, higher_phase
+            )
         
         if self._template_12hz is not None:
-            ref_lower = self._template_12hz
+            # Extract phase/frequency from template to refine synthetic reference
+            refined_freq, refined_phase = self._extract_frequency_phase(
+                self._template_12hz, lower_freq, lower_phase
+            )
+            ref_lower = self._generate_synthetic_reference(
+                refined_freq, window_samples, n_harmonics, refined_phase
+            )
         else:
-            ref_lower = self._generate_synthetic_reference(lower_freq, window_samples)
+            ref_lower = self._generate_synthetic_reference(
+                lower_freq, window_samples, n_harmonics, lower_phase
+            )
         
         return ref_higher, ref_lower
+    
+    def _extract_frequency_phase(
+        self,
+        template: NDArray[np.float64],
+        expected_freq: float,
+        expected_phase: float
+    ) -> Tuple[float, float]:
+        """
+        Extract frequency and phase from template using FFT.
+        
+        Args:
+            template: Template array shape (n_samples, n_channels)
+            expected_freq: Expected frequency (Hz)
+            expected_phase: Expected phase (radians)
+            
+        Returns:
+            Tuple of (refined_frequency, refined_phase)
+        """
+        # Average across channels to get single-channel template
+        if template.ndim > 1:
+            template_1d = np.mean(template, axis=1)
+        else:
+            template_1d = template
+        
+        # Remove DC component
+        template_1d = template_1d - np.mean(template_1d)
+        
+        # FFT to find dominant frequency
+        fft = np.fft.rfft(template_1d)
+        freqs = np.fft.rfftfreq(len(template_1d), 1.0 / self.sample_rate)
+        
+        # Find peak near expected frequency
+        freq_range = (expected_freq * 0.8, expected_freq * 1.2)
+        mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
+        
+        if np.any(mask):
+            peak_idx = np.argmax(np.abs(fft[mask]))
+            refined_freq = freqs[mask][peak_idx]
+        else:
+            refined_freq = expected_freq
+        
+        # Extract phase from FFT at the peak frequency
+        peak_idx = np.argmin(np.abs(freqs - refined_freq))
+        phase_complex = fft[peak_idx]
+        refined_phase = np.angle(phase_complex)
+        
+        # Clamp frequency to reasonable range
+        refined_freq = np.clip(refined_freq, expected_freq * 0.9, expected_freq * 1.1)
+        
+        return float(refined_freq), float(refined_phase)
     
     def _generate_synthetic_reference(
         self, 
         frequency: float, 
         n_samples: int,
-        n_harmonics: int = 2
+        n_harmonics: int = 2,
+        phase: Optional[float] = None
     ) -> NDArray[np.float64]:
-        """Generate synthetic reference if no calibration data available."""
+        """
+        Generate standard CCA reference signals: sin/cos at fundamental + harmonics.
+        
+        This is the standard CCA structure used in SSVEP classification.
+        Shape: (n_samples, 2*n_harmonics)
+        
+        Args:
+            frequency: Target frequency (Hz)
+            n_samples: Number of samples
+            n_harmonics: Number of harmonics to include
+            phase: Phase offset (radians). If None, uses default based on frequency.
+            
+        Returns:
+            Reference array shape (n_samples, 2*n_harmonics)
+        """
+        if phase is None:
+            # Default phase: 0 for higher freq, π for lower freq
+            phase = 0.0 if frequency >= 14.0 else np.pi
+        
         t = np.arange(n_samples) / self.sample_rate
         
         refs = []
-        phase = 0.0 if frequency == 15.0 else np.pi
-        
         for h in range(1, n_harmonics + 1):
+            # Phase propagates to harmonics: h * phase
             refs.append(np.sin(2 * np.pi * h * frequency * t + h * phase))
             refs.append(np.cos(2 * np.pi * h * frequency * t + h * phase))
         
-        return np.array(refs).T
+        return np.array(refs).T  # Shape: (n_samples, 2*n_harmonics)
     
     def get_statistics(self) -> Dict:
         """Get calibration statistics."""

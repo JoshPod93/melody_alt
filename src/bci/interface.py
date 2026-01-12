@@ -99,17 +99,40 @@ class FlickerWidget(QWidget):
         self.setMaximumHeight(100)
         self.setMaximumWidth(100)
         
+        # Qt performance optimizations for old hardware
+        # 1. Opaque paint event - skip background clearing (faster)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        # 2. No system background - we draw everything ourselves
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        
         # Timer for continuous updates - EXACTLY match screen calibration (no PreciseTimer)
-        self._update_timer = QTimer()
-        # Note: Screen calibration doesn't use PreciseTimer - using default timer type
-        # Interval will be set when starting (same as screen calibration)
+        # Try to use high-precision timer on Windows, fallback to QTimer
+        try:
+            from .high_precision_timer import HighPrecisionTimer, is_available
+            self._use_high_precision = is_available()
+        except (ImportError, RuntimeError):
+            self._use_high_precision = False
+        
+        if self._use_high_precision:
+            # Use Windows multimedia timer for better precision
+            self._update_timer = None  # Will be created in set_active
+            self._high_precision_timer = None
+        else:
+            # Fallback to QTimer
+            self._update_timer = QTimer()
+            self._high_precision_timer = None
         
         # Timer monitoring to detect if timer is actually firing
         self._timer_fire_count = 0
         self._last_timer_fire_time = None
         
-        # Connect timer after monitoring vars are initialized
-        self._update_timer.timeout.connect(self._on_timer_fire)
+        # Flicker rate accuracy tracking
+        self._paint_intervals = []  # Store intervals between paints for frequency calculation
+        self._flicker_rate_samples = 250  # Number of samples to use for rate calculation
+        
+        if not self._use_high_precision:
+            # Connect QTimer after monitoring vars are initialized
+            self._update_timer.timeout.connect(self._on_timer_fire)
     
     def _on_timer_fire(self) -> None:
         """Wrapper to detect if timer is actually firing vs paintEvent being throttled."""
@@ -121,7 +144,14 @@ class FlickerWidget(QWidget):
                 if dt > 0.020:  # More than 20ms between timer fires
                     print(f"[TIMER DEBUG] {self.position}: Timer slow! dt={dt*1000:.1f}ms (expected ~8ms), fires={self._timer_fire_count}")
         self._last_timer_fire_time = current_time
-        self.update()  # Call update() to trigger paintEvent
+        
+        # Force immediate repaint - update() was being throttled too much
+        # repaint() forces immediate painting which is necessary for accurate flickering
+        # The Qt optimizations (WA_OpaquePaintEvent, etc.) reduce the cost of repaint()
+        if self._use_high_precision:
+            QTimer.singleShot(0, self.repaint)  # Force immediate repaint on main thread
+        else:
+            self.repaint()  # Direct call for QTimer (already on main thread)
     
     def set_active(self, active: bool) -> None:
         """
@@ -135,23 +165,45 @@ class FlickerWidget(QWidget):
         self._is_active = active
         
         if active:
-            # EXACTLY match screen calibration start_calibration():
-            # - Set calibrating flag (we use _is_active instead)
-            # - Call target.start() ONCE to set start time
-            # - Start timer with 8ms interval
-            # - Call update() to trigger first paint
+            # Call target.start() ONCE to set start time (don't reset timing!)
             if not was_active:
-                self.target.start()  # Set start time ONCE (same as screen calibration)
-            if not self._update_timer.isActive():
-                self._update_timer.start(8)  # Start with 8ms interval (same as screen calibration)
-            self.update()  # Trigger first paint (same as screen calibration)
+                self.target.start()
+            
+            # Start timer with 8ms interval
+            if self._use_high_precision:
+                # Use Windows multimedia timer for better precision
+                try:
+                    from .high_precision_timer import HighPrecisionTimer
+                    if self._high_precision_timer is None:
+                        self._high_precision_timer = HighPrecisionTimer(
+                            interval_ms=8,
+                            callback=self._on_timer_fire
+                        )
+                    if not self._high_precision_timer.is_running:
+                        self._high_precision_timer.start()
+                except Exception as e:
+                    print(f"[FLICKER] High-precision timer failed, using QTimer: {e}")
+                    self._use_high_precision = False
+                    if self._update_timer is None:
+                        self._update_timer = QTimer()
+                        self._update_timer.timeout.connect(self._on_timer_fire)
+                    self._update_timer.start(8)
+            else:
+                # Use QTimer (fallback)
+                if self._update_timer is None:
+                    self._update_timer = QTimer()
+                    self._update_timer.timeout.connect(self._on_timer_fire)
+                if not self._update_timer.isActive():
+                    self._update_timer.start(8)
+            
+            self.update()  # Immediate update
         else:
-            # EXACTLY match screen calibration stop_calibration():
-            # - Clear calibrating flag (we use _is_active instead)
-            # - Stop timer
-            # - Call update() to trigger final paint
-            self._update_timer.stop()  # Stop timer (same as screen calibration)
-            self.update()  # Trigger final paint (same as screen calibration)
+            # Stop timer
+            if self._use_high_precision and self._high_precision_timer:
+                self._high_precision_timer.stop()
+            elif self._update_timer:
+                self._update_timer.stop()
+            self.update()  # Final update to show inactive state
     
     def paintEvent(self, event) -> None:
         """Paint the flickering target with real-time intensity calculation."""
@@ -185,18 +237,33 @@ class FlickerWidget(QWidget):
                 dt = current_time - self._last_paint_time
                 phase_drift = abs(self._expected_phase - self._actual_phase)
                 
+                # Track paint intervals for flicker rate calculation
+                self._paint_intervals.append(dt)
+                if len(self._paint_intervals) > self._flicker_rate_samples:
+                    self._paint_intervals.pop(0)
+                
                 # Log if we detect significant drift or slow updates
                 if self._paint_count % 125 == 0:  # Log every ~1 second at 125Hz
                     if dt > 0.020:  # More than 20ms between paints (should be ~8ms)
                         print(f"[FLICKER DEBUG] {self.position}: Slow paint! dt={dt*1000:.1f}ms (expected ~8ms)")
                     if phase_drift > 0.5:  # More than 0.5 radians drift
                         print(f"[FLICKER DEBUG] {self.position}: Phase drift! {phase_drift:.3f} rad, expected={self._expected_phase:.3f}, actual={self._actual_phase:.3f}")
+                    
+                    # Calculate and log actual flicker rate
+                    if len(self._paint_intervals) >= 50:  # Need enough samples
+                        mean_interval = np.mean(self._paint_intervals)
+                        actual_rate = 1.0 / mean_interval if mean_interval > 0 else 0
+                        target_rate = self.frequency
+                        rate_error = abs(actual_rate - target_rate)
+                        rate_error_pct = (rate_error / target_rate * 100) if target_rate > 0 else 0
+                        print(f"[FLICKER RATE] {self.position}: Target={target_rate:.2f}Hz, Actual={actual_rate:.2f}Hz, Error={rate_error:.3f}Hz ({rate_error_pct:.1f}%)")
             
             self._last_paint_time = current_time
         else:
             intensity = 0.0
             self._last_paint_time = None
             self._paint_count = 0
+            self._paint_intervals.clear()
         
         # Calculate color - EXACTLY match screen calibration FlickerFrequencyDetector.paintEvent
         if self._is_active:
@@ -211,9 +278,11 @@ class FlickerWidget(QWidget):
             color = self.color_off
         
         # Draw rounded rectangle - use fixed border color (never changes during flickering)
-        rect = self.rect().adjusted(5, 5, -5, -5)
+        # Use exact rect to avoid unnecessary clipping
+        rect = QRectF(5, 5, self.width() - 10, self.height() - 10)
         painter.setPen(QPen(QColor(100, 100, 100), 2))  # Fixed border - never changes
         painter.setBrush(QBrush(color))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)  # Disable AA for speed
         painter.drawRoundedRect(rect, 10, 10)
         
         # Draw frequency label on two lines
@@ -543,7 +612,10 @@ class BCICompositionWindow(QMainWindow):
         
         self._composition_timer = QTimer()
         self._composition_timer.timeout.connect(self._update_composition)
-        self._composition_timer.setInterval(16)
+        # Use 50ms interval to reduce event loop blocking
+        # This allows flickering to run smoothly while still providing responsive classification
+        # 20Hz update rate is sufficient for BCI control
+        self._composition_timer.setInterval(50)  # 20Hz update rate
         
         # Setup UI
         self._setup_ui()
@@ -826,6 +898,11 @@ class BCICompositionWindow(QMainWindow):
         self.preprocessor.reset()
         self.canvas.clear()
         
+        # Initialize performance metrics tracking
+        self._classification_results = []  # Store all classification results
+        self._classification_times = []  # Store timing for each classification
+        self._composition_start_time = time.perf_counter()
+        
         # Configure
         duration = self.duration_spin.value()
         self.controller.duration = float(duration)
@@ -965,14 +1042,31 @@ class BCICompositionWindow(QMainWindow):
         
         # Get EEG data and classify
         if self._use_lsl and self._lsl_connected:
-            # Pull and process from LSL stream (REAL DATA)
-            processed = self.preprocessor.pull_and_process(n_samples=16)
+            # Pull smaller chunks more efficiently (25ms = ~6-7 samples at 250Hz)
+            # Smaller chunks = faster preprocessing, less CPU blocking
+            n_samples_per_update = int(0.025 * self.preprocessor.sample_rate)  # 25ms worth
+            processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update)
             
             if len(processed) > 0:
-                # Get buffer for classification (0.5s window for CCA)
-                eeg_buffer = self.preprocessor.get_recent_data(0.5)
+                # Use shorter window for faster classification (0.3s instead of 0.5s)
+                eeg_buffer = self.preprocessor.get_recent_data(0.3)
                 # Use CCA - it's more robust with proper phase-matched references
                 result = self.classifier.classify(eeg_buffer, method="cca")
+                
+                # Track classification metrics
+                classify_time = time.perf_counter()
+                self._classification_results.append(result)
+                self._classification_times.append(classify_time - self._composition_start_time)
+                
+                # Debug: Log classification results periodically
+                if not hasattr(self, '_last_classify_log_time'):
+                    self._last_classify_log_time = 0
+                current_time = time.time()
+                if current_time - self._last_classify_log_time > 1.0:  # Log every second
+                    print(f"[CLASSIFY] Target={result.target.name}, Confidence={result.confidence:.2f}, "
+                          f"Higher={result.power_higher_freq:.3f}, Lower={result.power_lower_freq:.3f}, "
+                          f"Score={result.raw_score:.3f}")
+                    self._last_classify_log_time = current_time
             else:
                 # No data available - hold position
                 result = ClassificationResult(
@@ -1047,6 +1141,9 @@ class BCICompositionWindow(QMainWindow):
         """Create score from completed composition."""
         trail = self.controller.get_trail_as_tuples()
         
+        # Calculate performance metrics
+        performance_metrics = self._calculate_performance_metrics()
+        
         self.current_score = BCIScore(
             trail=trail,
             duration=self.controller.duration,
@@ -1054,7 +1151,8 @@ class BCICompositionWindow(QMainWindow):
             metadata={
                 'simulated': not self._use_lsl,
                 'top_frequency': self.stimulus.top_frequency,
-                'bottom_frequency': self.stimulus.bottom_frequency
+                'bottom_frequency': self.stimulus.bottom_frequency,
+                'performance_metrics': performance_metrics
             }
         )
         
@@ -1063,13 +1161,200 @@ class BCICompositionWindow(QMainWindow):
         self.save_btn.setEnabled(True)
         self.export_btn.setEnabled(True)
         
-        # Show statistics
+        # Show statistics with performance summary
         stats = self.current_score.get_statistics()
+        perf_summary = self._format_performance_summary(performance_metrics)
         self.status_label.setText(
             f"Score complete: {stats['num_points']} points, "
             f"pitch range: {stats['pitch_range']:.2f}, "
-            f"total movement: {stats['total_movement']:.2f}"
+            f"total movement: {stats['total_movement']:.2f}\n{perf_summary}"
         )
+        
+        # Print detailed performance report
+        self._print_performance_report(performance_metrics)
+        
+        # Also save to file for easy access
+        self._save_performance_report(performance_metrics)
+    
+    def _calculate_performance_metrics(self) -> dict:
+        """Calculate performance metrics from composition session."""
+        metrics = {}
+        
+        # Flicker rate accuracy
+        if hasattr(self.top_target, '_paint_intervals') and len(self.top_target._paint_intervals) > 50:
+            top_intervals = self.top_target._paint_intervals
+            top_mean_interval = np.mean(top_intervals)
+            top_actual_rate = 1.0 / top_mean_interval if top_mean_interval > 0 else 0
+            top_target_rate = self.top_target.frequency
+            top_error = abs(top_actual_rate - top_target_rate)
+            top_error_pct = (top_error / top_target_rate * 100) if top_target_rate > 0 else 0
+            metrics['top_flicker'] = {
+                'target_hz': top_target_rate,
+                'actual_hz': top_actual_rate,
+                'error_hz': top_error,
+                'error_pct': top_error_pct
+            }
+        
+        if hasattr(self.bottom_target, '_paint_intervals') and len(self.bottom_target._paint_intervals) > 50:
+            bottom_intervals = self.bottom_target._paint_intervals
+            bottom_mean_interval = np.mean(bottom_intervals)
+            bottom_actual_rate = 1.0 / bottom_mean_interval if bottom_mean_interval > 0 else 0
+            bottom_target_rate = self.bottom_target.frequency
+            bottom_error = abs(bottom_actual_rate - bottom_target_rate)
+            bottom_error_pct = (bottom_error / bottom_target_rate * 100) if bottom_target_rate > 0 else 0
+            metrics['bottom_flicker'] = {
+                'target_hz': bottom_target_rate,
+                'actual_hz': bottom_actual_rate,
+                'error_hz': bottom_error,
+                'error_pct': bottom_error_pct
+            }
+        
+        # Classification performance
+        if hasattr(self, '_classification_results') and len(self._classification_results) > 0:
+            confidences = [r.confidence for r in self._classification_results]
+            targets = [r.target for r in self._classification_results]
+            power_higher = [r.power_higher_freq for r in self._classification_results]
+            power_lower = [r.power_lower_freq for r in self._classification_results]
+            
+            metrics['classification'] = {
+                'n_classifications': len(self._classification_results),
+                'mean_confidence': np.mean(confidences),
+                'std_confidence': np.std(confidences),
+                'min_confidence': np.min(confidences),
+                'max_confidence': np.max(confidences),
+                'target_distribution': {
+                    'UP': sum(1 for t in targets if t == AttentionTarget.UP),
+                    'DOWN': sum(1 for t in targets if t == AttentionTarget.DOWN),
+                    'NONE': sum(1 for t in targets if t == AttentionTarget.NONE)
+                },
+                'mean_power_higher': np.mean(power_higher),
+                'mean_power_lower': np.mean(power_lower)
+            }
+            
+            # Classification rate (classifications per second)
+            if hasattr(self, '_composition_start_time') and hasattr(self, '_classification_times'):
+                total_time = self.controller.duration
+                if total_time > 0:
+                    metrics['classification']['rate_per_sec'] = len(self._classification_results) / total_time
+        
+        return metrics
+    
+    def _format_performance_summary(self, metrics: dict) -> str:
+        """Format a brief performance summary for status label."""
+        parts = []
+        
+        if 'top_flicker' in metrics:
+            tf = metrics['top_flicker']
+            parts.append(f"Top: {tf['actual_hz']:.2f}Hz ({tf['error_pct']:.1f}% error)")
+        
+        if 'bottom_flicker' in metrics:
+            bf = metrics['bottom_flicker']
+            parts.append(f"Bottom: {bf['actual_hz']:.2f}Hz ({bf['error_pct']:.1f}% error)")
+        
+        if 'classification' in metrics:
+            cf = metrics['classification']
+            parts.append(f"Conf: {cf['mean_confidence']:.2f}")
+        
+        return " | ".join(parts) if parts else ""
+    
+    def _print_performance_report(self, metrics: dict) -> None:
+        """Print detailed performance report to console."""
+        print("\n" + "=" * 60)
+        print("PERFORMANCE REPORT - During Live Data Capture + Preprocessing + Classification")
+        print("=" * 60)
+        print("NOTE: These rates show flicker accuracy WHILE LSL pulling, preprocessing,")
+        print("      and classification were running simultaneously.")
+        print("=" * 60)
+        
+        # Flicker rate accuracy
+        if 'top_flicker' in metrics:
+            tf = metrics['top_flicker']
+            print(f"\nTop Flicker Rate (during composition):")
+            print(f"  Target: {tf['target_hz']:.3f} Hz")
+            print(f"  Actual: {tf['actual_hz']:.3f} Hz")
+            print(f"  Error:  {tf['error_hz']:.3f} Hz ({tf['error_pct']:.1f}%)")
+            if tf['error_pct'] > 5.0:
+                print(f"  ⚠️  WARNING: High error rate! Flicker degraded during composition.")
+            elif tf['error_pct'] > 2.0:
+                print(f"  ⚠️  Moderate error - flicker rate slowed during composition.")
+            else:
+                print(f"  ✓ Good accuracy - flicker rate maintained during composition.")
+        
+        if 'bottom_flicker' in metrics:
+            bf = metrics['bottom_flicker']
+            print(f"\nBottom Flicker Rate (during composition):")
+            print(f"  Target: {bf['target_hz']:.3f} Hz")
+            print(f"  Actual: {bf['actual_hz']:.3f} Hz")
+            print(f"  Error:  {bf['error_hz']:.3f} Hz ({bf['error_pct']:.1f}%)")
+            if bf['error_pct'] > 5.0:
+                print(f"  ⚠️  WARNING: High error rate! Flicker degraded during composition.")
+            elif bf['error_pct'] > 2.0:
+                print(f"  ⚠️  Moderate error - flicker rate slowed during composition.")
+            else:
+                print(f"  ✓ Good accuracy - flicker rate maintained during composition.")
+        
+        # Classification performance
+        if 'classification' in metrics:
+            cf = metrics['classification']
+            print(f"\nClassification Performance:")
+            print(f"  Total classifications: {cf['n_classifications']}")
+            if 'rate_per_sec' in cf:
+                print(f"  Classification rate: {cf['rate_per_sec']:.1f} Hz")
+            print(f"  Mean confidence: {cf['mean_confidence']:.3f} (std: {cf['std_confidence']:.3f})")
+            print(f"  Confidence range: [{cf['min_confidence']:.3f}, {cf['max_confidence']:.3f}]")
+            print(f"  Target distribution:")
+            dist = cf['target_distribution']
+            for target, count in dist.items():
+                pct = (count / cf['n_classifications'] * 100) if cf['n_classifications'] > 0 else 0
+                print(f"    {target}: {count} ({pct:.1f}%)")
+            print(f"  Mean power (higher): {cf['mean_power_higher']:.3f}")
+            print(f"  Mean power (lower):  {cf['mean_power_lower']:.3f}")
+        
+        print("=" * 60 + "\n")
+        
+        # Also save to file for easy access
+        self._save_performance_report(metrics)
+    
+    def _save_performance_report(self, metrics: dict) -> None:
+        """Save performance report to file for easy access."""
+        from datetime import datetime
+        report_file = Path("performance_report.txt")
+        
+        with open(report_file, 'w') as f:
+            f.write("=" * 60 + "\n")
+            f.write("PERFORMANCE REPORT - During Live Data Capture + Preprocessing + Classification\n")
+            f.write("=" * 60 + "\n")
+            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 60 + "\n\n")
+            
+            if 'top_flicker' in metrics:
+                tf = metrics['top_flicker']
+                f.write(f"Top Flicker Rate:\n")
+                f.write(f"  Target: {tf['target_hz']:.3f} Hz\n")
+                f.write(f"  Actual: {tf['actual_hz']:.3f} Hz\n")
+                f.write(f"  Error:  {tf['error_hz']:.3f} Hz ({tf['error_pct']:.1f}%)\n\n")
+            
+            if 'bottom_flicker' in metrics:
+                bf = metrics['bottom_flicker']
+                f.write(f"Bottom Flicker Rate:\n")
+                f.write(f"  Target: {bf['target_hz']:.3f} Hz\n")
+                f.write(f"  Actual: {bf['actual_hz']:.3f} Hz\n")
+                f.write(f"  Error:  {bf['error_hz']:.3f} Hz ({bf['error_pct']:.1f}%)\n\n")
+            
+            if 'classification' in metrics:
+                cf = metrics['classification']
+                f.write(f"Classification Performance:\n")
+                f.write(f"  Total classifications: {cf['n_classifications']}\n")
+                if 'rate_per_sec' in cf:
+                    f.write(f"  Classification rate: {cf['rate_per_sec']:.1f} Hz\n")
+                f.write(f"  Mean confidence: {cf['mean_confidence']:.3f}\n")
+                f.write(f"  Target distribution:\n")
+                dist = cf['target_distribution']
+                for target, count in dist.items():
+                    pct = (count / cf['n_classifications'] * 100) if cf['n_classifications'] > 0 else 0
+                    f.write(f"    {target}: {count} ({pct:.1f}%)\n")
+        
+        print(f"[PERFORMANCE] Report saved to: {report_file.absolute()}")
     
     def _play_score(self) -> None:
         """Play the current score."""
@@ -1477,9 +1762,17 @@ class BCICompositionWindow(QMainWindow):
             print(f"[CALIBRATION] Error in _cal_end_trial: {e}")
             import traceback
             traceback.print_exc()
+            # Still try to continue even on error
+            if self._cal_trial_index < len(self._cal_sequence):
+                self._cal_trial_index += 1
         
-        # Continue or finish
-        QTimer.singleShot(500, self._cal_start_rest)
+        # Continue or finish - check if we're done before starting rest
+        if self._cal_trial_index >= len(self._cal_sequence):
+            print(f"[CALIBRATION] All trials complete, finishing...")
+            QTimer.singleShot(500, self._cal_finish)
+        else:
+            # Continue with next rest period
+            QTimer.singleShot(500, self._cal_start_rest)
     
     def _cal_finish(self) -> None:
         """Finish calibration and compute templates."""

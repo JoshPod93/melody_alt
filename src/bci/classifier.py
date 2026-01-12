@@ -112,8 +112,9 @@ class SSVEPClassifier:
         """
         Load personalized reference signals from calibration data.
         
-        This replaces synthetic references with real SSVEP templates
-        captured from the user's brain responses.
+        Uses standard CCA structure (sin/cos at fundamental + harmonics).
+        Templates are used to refine phase/frequency parameters, but references
+        remain in standard sin/cos format for optimal CCA performance.
         
         Args:
             calibration_data: CalibrationData with recorded SSVEP responses
@@ -122,29 +123,52 @@ class SSVEPClassifier:
             True if calibration was loaded successfully
         """
         try:
-            ref_up, ref_down = calibration_data.get_cca_references(self.window_seconds)
+            ref_up, ref_down = calibration_data.get_cca_references(
+                self.window_seconds, n_harmonics=self.n_harmonics
+            )
             
             if ref_up is not None and ref_down is not None:
-                # Ensure correct shape
+                # Ensure correct shape: (n_samples, 2*n_harmonics)
                 n_samples = int(self.window_seconds * self.sample_rate)
+                expected_cols = 2 * self.n_harmonics
                 
                 # Resize if needed
-                if len(ref_up) != n_samples:
+                if ref_up.shape[0] != n_samples:
                     ref_up = self._resize_reference(ref_up, n_samples)
-                if len(ref_down) != n_samples:
+                if ref_down.shape[0] != n_samples:
                     ref_down = self._resize_reference(ref_down, n_samples)
+                
+                # Ensure correct number of columns (should be 2*n_harmonics)
+                if ref_up.shape[1] != expected_cols:
+                    print(f"[WARNING] Reference shape mismatch: got {ref_up.shape[1]} columns, "
+                          f"expected {expected_cols}. Truncating or padding.")
+                    if ref_up.shape[1] > expected_cols:
+                        ref_up = ref_up[:, :expected_cols]
+                        ref_down = ref_down[:, :expected_cols]
+                    else:
+                        # Pad with zeros (shouldn't happen with new implementation)
+                        pad = np.zeros((ref_up.shape[0], expected_cols - ref_up.shape[1]))
+                        ref_up = np.hstack([ref_up, pad])
+                        ref_down = np.hstack([ref_down, pad])
                 
                 self._ref_signals_up = ref_up
                 self._ref_signals_down = ref_down
                 self._using_calibration = True
                 
-                print(f"Loaded calibration: UP={ref_up.shape}, DOWN={ref_down.shape}")
+                # Debug: Verify which frequency is mapped to which
+                print(f"[CLASSIFIER] Loaded calibration: UP={ref_up.shape}, DOWN={ref_down.shape}")
+                print(f"[CLASSIFIER] Reference structure: {self.n_harmonics} harmonics = "
+                      f"{2*self.n_harmonics} components (sin/cos pairs)")
+                print(f"[CLASSIFIER] Reference mapping: UP=higher_freq ({self.target_frequencies[0]:.2f}Hz), "
+                      f"DOWN=lower_freq ({self.target_frequencies[1]:.2f}Hz)")
                 return True
             
             return False
             
         except Exception as e:
             print(f"Failed to load calibration: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def _resize_reference(self, ref: NDArray, target_samples: int) -> NDArray:
@@ -229,21 +253,20 @@ class SSVEPClassifier:
         freqs = np.fft.rfftfreq(n_samples, 1/self.sample_rate)
         fft_vals = np.abs(np.fft.rfft(data_avg))
         
-        # Get power at target frequencies (with small bandwidth)
+        # OPTIMIZED: Use only fundamental frequencies (skip harmonics for speed)
+        # Harmonics can be added back if needed, but fundamentals are usually enough
         bandwidth = 1.0  # Hz
         
-        def get_band_power(target_freq: float) -> float:
-            idx = np.where((freqs >= target_freq - bandwidth) & 
-                          (freqs <= target_freq + bandwidth))[0]
-            if len(idx) == 0:
+        # Vectorized band power calculation (faster than loop)
+        def get_band_power_fast(target_freq: float) -> float:
+            mask = (freqs >= target_freq - bandwidth) & (freqs <= target_freq + bandwidth)
+            if not np.any(mask):
                 return 0.0
-            return np.sum(fft_vals[idx] ** 2)
+            return np.sum(fft_vals[mask] ** 2)
         
-        # Calculate power at each target frequency (including harmonics)
-        power_up = sum(get_band_power(self.target_frequencies[0] * h) 
-                       for h in range(1, self.n_harmonics + 1))
-        power_down = sum(get_band_power(self.target_frequencies[1] * h) 
-                         for h in range(1, self.n_harmonics + 1))
+        # Only use fundamental frequencies for speed
+        power_up = get_band_power_fast(self.target_frequencies[0])
+        power_down = get_band_power_fast(self.target_frequencies[1])
         
         # Calculate ratio and confidence
         total_power = power_up + power_down + 1e-10
@@ -270,10 +293,10 @@ class SSVEPClassifier:
     
     def classify_cca(self, eeg_data: NDArray[np.float64]) -> ClassificationResult:
         """
-        Classify using Canonical Correlation Analysis (CCA).
+        Classify using Canonical Correlation Analysis (CCA) with 2 harmonics.
         
-        More robust than FFT, better for noisy data.
-        Uses ONLY occipital channels (PO7, Oz, PO8) for SSVEP detection.
+        Uses ONLY CCA when calibration is available, FFT otherwise.
+        No mixing - one method only for maximum speed.
         
         Args:
             eeg_data: EEG data of shape (n_samples, n_channels)
@@ -281,59 +304,62 @@ class SSVEPClassifier:
         Returns:
             ClassificationResult
         """
-        # CRITICAL: Use ONLY occipital channels for SSVEP
-        if eeg_data.shape[1] > max(self.occipital_channels):
-            data = eeg_data[:, self.occipital_channels]
-        else:
-            data = eeg_data
-        
-        # Ensure data length matches reference signals
-        n_ref = self._ref_signals_up.shape[0]
-        if data.shape[0] > n_ref:
-            data = data[-n_ref:]
-        elif data.shape[0] < n_ref:
-            # Pad with zeros (not ideal, but handles edge case)
-            pad_size = n_ref - data.shape[0]
-            data = np.vstack([np.zeros((pad_size, data.shape[1])), data])
-        
-        # Compute CCA correlation for each target
-        corr_up = self._cca_correlation(data, self._ref_signals_up)
-        corr_down = self._cca_correlation(data, self._ref_signals_down)
-        
-        # Also compute FFT-based power for comparison
-        fft_result = self.classify_fft(eeg_data)
-        
-        # Combine CCA and FFT evidence
-        # CCA correlation difference
-        cca_diff = corr_up - corr_down
-        
-        # FFT power difference (normalized)
-        fft_total = fft_result.power_higher_freq + fft_result.power_lower_freq + 1e-10
-        fft_diff = (fft_result.power_higher_freq - fft_result.power_lower_freq) / fft_total
-        
-        # Combined score: weight CCA more if calibrated, otherwise equal
+        # If calibrated, use CCA only (with 2 harmonics in reference signals)
         if self._using_calibration:
-            combined_score = 0.7 * np.sign(cca_diff) * min(abs(cca_diff) * 3, 1) + 0.3 * fft_diff
+            # CRITICAL: Use ONLY occipital channels for SSVEP
+            if eeg_data.shape[1] > max(self.occipital_channels):
+                data = eeg_data[:, self.occipital_channels]
+            else:
+                data = eeg_data
+            
+            # Ensure data length matches reference signals
+            n_ref = self._ref_signals_up.shape[0]
+            if data.shape[0] > n_ref:
+                data = data[-n_ref:]
+            elif data.shape[0] < n_ref:
+                # Pad with zeros (not ideal, but handles edge case)
+                pad_size = n_ref - data.shape[0]
+                data = np.vstack([np.zeros((pad_size, data.shape[1])), data])
+            
+            # Compute CCA correlation for each target (references include 2 harmonics)
+            corr_up = self._cca_correlation(data, self._ref_signals_up)
+            corr_down = self._cca_correlation(data, self._ref_signals_down)
+            
+            # DEBUG: Log correlations periodically to diagnose inversion
+            if not hasattr(self, '_last_cca_log_time'):
+                self._last_cca_log_time = 0
+            import time
+            current_time = time.time()
+            if current_time - self._last_cca_log_time > 2.0:  # Log every 2 seconds
+                print(f"[CCA DEBUG] corr_up={corr_up:.4f}, corr_down={corr_down:.4f}, "
+                      f"diff={corr_up - corr_down:.4f}, "
+                      f"UP_freq={self.target_frequencies[0]:.2f}Hz, DOWN_freq={self.target_frequencies[1]:.2f}Hz")
+                self._last_cca_log_time = current_time
+            
+            # CCA correlation difference
+            cca_diff = corr_up - corr_down
+            score = np.sign(cca_diff) * min(abs(cca_diff) * 3, 1)
+            
+            # Confidence based on magnitude
+            confidence = min(abs(score) * 1.5, 1.0)
+            confidence = max(confidence, 0.2)  # Minimum confidence
+            
+            # Direction based on CCA score
+            if score >= 0:
+                target = AttentionTarget.UP
+            else:
+                target = AttentionTarget.DOWN
+            
+            return ClassificationResult(
+                target=target,
+                confidence=confidence,
+                power_higher_freq=corr_up,
+                power_lower_freq=corr_down,
+                raw_score=score
+            )
         else:
-            combined_score = 0.5 * np.sign(cca_diff) * min(abs(cca_diff) * 3, 1) + 0.5 * fft_diff
-        
-        # Confidence based on agreement and magnitude
-        confidence = min(abs(combined_score) * 2, 1.0)
-        confidence = max(confidence, 0.2)  # Minimum confidence
-        
-        # Direction based on combined score
-        if combined_score >= 0:
-            target = AttentionTarget.UP
-        else:
-            target = AttentionTarget.DOWN
-        
-        return ClassificationResult(
-            target=target,
-            confidence=confidence,
-            power_higher_freq=corr_up,
-            power_lower_freq=corr_down,
-            raw_score=combined_score
-        )
+            # Not calibrated: use FFT only
+            return self.classify_fft(eeg_data)
     
     def _cca_correlation(
         self,

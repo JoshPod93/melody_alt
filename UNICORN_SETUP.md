@@ -146,9 +146,21 @@ The Unicorn Hybrid Black streams **17 channels** at 250 Hz:
 | 15 | Battery | % | Battery level |
 | 16 | Validation | - | Data validity flag |
 
-### For SSVEP (our 15Hz/10Hz paradigm)
+### For SSVEP (our 15Hz/12Hz paradigm)
 
 Channels **PO7, Oz, PO8** (indices 5, 6, 7) are over the **visual cortex** and best for detecting SSVEP responses to flickering stimuli.
+
+### Reference and Grounding
+
+**The Unicorn Black has built-in reference and ground electrodes** - no external mastoid stickers or ear clips are required. The device handles referencing internally.
+
+**Our preprocessing applies Common Average Reference (CAR)**:
+- Subtracts the mean of all channels from each channel
+- Removes common-mode noise shared across electrodes
+- Standard practice for SSVEP to improve signal quality
+- Applied automatically in the preprocessing pipeline
+
+This is why we don't need external reference electrodes - the Unicorn handles hardware referencing, and we apply CAR for software-based noise reduction.
 
 ---
 
