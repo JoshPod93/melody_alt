@@ -1,0 +1,13 @@
+name: unicorn_test
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - liblsl
+  - pip
+  - pip:
+    - numpy>=1.24.0
+    - pylsl>=1.17.0
+    - matplotlib>=3.7.0
+    - scipy>=1.10.0

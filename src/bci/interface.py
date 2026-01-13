@@ -1009,6 +1009,9 @@ class BCICompositionWindow(QMainWindow):
                 stream_info = self.preprocessor._lsl_receiver.stream_info
                 self.lsl_status.setText(f"Connected: {stream_info.name}")
                 self.lsl_status.setStyleSheet("color: #00ff00;")  # Green
+                
+                # Update classifier sample rate to match preprocessor
+                self.classifier.sample_rate = self.preprocessor.sample_rate
                 self.status_label.setText(f"Connected to {stream_info.name} @ {stream_info.sample_rate}Hz")
             else:
                 if self.EXPERIMENT_MODE:
@@ -1042,15 +1045,17 @@ class BCICompositionWindow(QMainWindow):
         
         # Get EEG data and classify
         if self._use_lsl and self._lsl_connected:
-            # Pull smaller chunks more efficiently (25ms = ~6-7 samples at 250Hz)
-            # Smaller chunks = faster preprocessing, less CPU blocking
-            n_samples_per_update = int(0.025 * self.preprocessor.sample_rate)  # 25ms worth
+            # Pull chunk matching update interval (50ms = ~12-13 samples at 250Hz)
+            # Matches update rate for better efficiency and vectorization
+            n_samples_per_update = int(0.050 * self.preprocessor.sample_rate)  # 50ms worth
             processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update)
             
             if len(processed) > 0:
                 # Use shorter window for faster classification (0.3s instead of 0.5s)
+                # get_recent_data now returns occipital channels only (PO7, Oz, PO8)
                 eeg_buffer = self.preprocessor.get_recent_data(0.3)
                 # Use CCA - it's more robust with proper phase-matched references
+                # Classifier expects occipital channels only (already handled by preprocessor)
                 result = self.classifier.classify(eeg_buffer, method="cca")
                 
                 # Track classification metrics
@@ -1139,42 +1144,73 @@ class BCICompositionWindow(QMainWindow):
     
     def _finalize_score(self) -> None:
         """Create score from completed composition."""
-        trail = self.controller.get_trail_as_tuples()
-        
-        # Calculate performance metrics
-        performance_metrics = self._calculate_performance_metrics()
-        
-        self.current_score = BCIScore(
-            trail=trail,
-            duration=self.controller.duration,
-            waveform_name=self.waveform_combo.currentText(),
-            metadata={
-                'simulated': not self._use_lsl,
-                'top_frequency': self.stimulus.top_frequency,
-                'bottom_frequency': self.stimulus.bottom_frequency,
-                'performance_metrics': performance_metrics
-            }
-        )
-        
-        # Enable playback controls
-        self.play_btn.setEnabled(True)
-        self.save_btn.setEnabled(True)
-        self.export_btn.setEnabled(True)
-        
-        # Show statistics with performance summary
-        stats = self.current_score.get_statistics()
-        perf_summary = self._format_performance_summary(performance_metrics)
-        self.status_label.setText(
-            f"Score complete: {stats['num_points']} points, "
-            f"pitch range: {stats['pitch_range']:.2f}, "
-            f"total movement: {stats['total_movement']:.2f}\n{perf_summary}"
-        )
-        
-        # Print detailed performance report
-        self._print_performance_report(performance_metrics)
-        
-        # Also save to file for easy access
-        self._save_performance_report(performance_metrics)
+        try:
+            trail = self.controller.get_trail_as_tuples()
+            
+            # Calculate performance metrics
+            try:
+                performance_metrics = self._calculate_performance_metrics()
+            except Exception as e:
+                print(f"[ERROR] Failed to calculate performance metrics: {e}")
+                import traceback
+                traceback.print_exc()
+                performance_metrics = {}
+            
+            try:
+                self.current_score = BCIScore(
+                    trail=trail,
+                    duration=self.controller.duration,
+                    waveform_name=self.waveform_combo.currentText(),
+                    metadata={
+                        'simulated': not self._use_lsl,
+                        'top_frequency': self.stimulus.top_frequency,
+                        'bottom_frequency': self.stimulus.bottom_frequency,
+                        'performance_metrics': performance_metrics
+                    }
+                )
+            except Exception as e:
+                print(f"[ERROR] Failed to create BCIScore: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
+            
+            # Enable playback controls
+            self.play_btn.setEnabled(True)
+            self.save_btn.setEnabled(True)
+            self.export_btn.setEnabled(True)
+            
+            # Show statistics with performance summary
+            try:
+                stats = self.current_score.get_statistics()
+                perf_summary = self._format_performance_summary(performance_metrics)
+                self.status_label.setText(
+                    f"Score complete: {stats['num_points']} points, "
+                    f"pitch range: {stats['pitch_range']:.2f}, "
+                    f"total movement: {stats['total_movement']:.2f}\n{perf_summary}"
+                )
+            except Exception as e:
+                print(f"[ERROR] Failed to get statistics: {e}")
+                import traceback
+                traceback.print_exc()
+                self.status_label.setText("Score complete! Play or save your score.")
+            
+            # Print detailed performance report (also saves to file)
+            try:
+                self._print_performance_report(performance_metrics)
+            except Exception as e:
+                print(f"[ERROR] Failed to print performance report: {e}")
+                import traceback
+                traceback.print_exc()
+        except Exception as e:
+            print(f"[CRITICAL ERROR] Failed to finalize score: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(
+                self,
+                "Error Finalizing Score",
+                f"Failed to finalize score:\n\n{str(e)}\n\nCheck console for details."
+            )
+            self.status_label.setText(f"Error: {str(e)}")
     
     def _calculate_performance_metrics(self) -> dict:
         """Calculate performance metrics from composition session."""
@@ -1320,41 +1356,46 @@ class BCICompositionWindow(QMainWindow):
         from datetime import datetime
         report_file = Path("performance_report.txt")
         
-        with open(report_file, 'w') as f:
-            f.write("=" * 60 + "\n")
-            f.write("PERFORMANCE REPORT - During Live Data Capture + Preprocessing + Classification\n")
-            f.write("=" * 60 + "\n")
-            f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write("=" * 60 + "\n\n")
+        try:
+            with open(report_file, 'w', encoding='utf-8') as f:
+                f.write("=" * 60 + "\n")
+                f.write("PERFORMANCE REPORT - During Live Data Capture + Preprocessing + Classification\n")
+                f.write("=" * 60 + "\n")
+                f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 60 + "\n\n")
+                
+                if 'top_flicker' in metrics:
+                    tf = metrics['top_flicker']
+                    f.write(f"Top Flicker Rate:\n")
+                    f.write(f"  Target: {tf['target_hz']:.3f} Hz\n")
+                    f.write(f"  Actual: {tf['actual_hz']:.3f} Hz\n")
+                    f.write(f"  Error:  {tf['error_hz']:.3f} Hz ({tf['error_pct']:.1f}%)\n\n")
+                
+                if 'bottom_flicker' in metrics:
+                    bf = metrics['bottom_flicker']
+                    f.write(f"Bottom Flicker Rate:\n")
+                    f.write(f"  Target: {bf['target_hz']:.3f} Hz\n")
+                    f.write(f"  Actual: {bf['actual_hz']:.3f} Hz\n")
+                    f.write(f"  Error:  {bf['error_hz']:.3f} Hz ({bf['error_pct']:.1f}%)\n\n")
+                
+                if 'classification' in metrics:
+                    cf = metrics['classification']
+                    f.write(f"Classification Performance:\n")
+                    f.write(f"  Total classifications: {cf['n_classifications']}\n")
+                    if 'rate_per_sec' in cf:
+                        f.write(f"  Classification rate: {cf['rate_per_sec']:.1f} Hz\n")
+                    f.write(f"  Mean confidence: {cf['mean_confidence']:.3f}\n")
+                    f.write(f"  Target distribution:\n")
+                    dist = cf['target_distribution']
+                    for target, count in dist.items():
+                        pct = (count / cf['n_classifications'] * 100) if cf['n_classifications'] > 0 else 0
+                        f.write(f"    {target}: {count} ({pct:.1f}%)\n")
             
-            if 'top_flicker' in metrics:
-                tf = metrics['top_flicker']
-                f.write(f"Top Flicker Rate:\n")
-                f.write(f"  Target: {tf['target_hz']:.3f} Hz\n")
-                f.write(f"  Actual: {tf['actual_hz']:.3f} Hz\n")
-                f.write(f"  Error:  {tf['error_hz']:.3f} Hz ({tf['error_pct']:.1f}%)\n\n")
-            
-            if 'bottom_flicker' in metrics:
-                bf = metrics['bottom_flicker']
-                f.write(f"Bottom Flicker Rate:\n")
-                f.write(f"  Target: {bf['target_hz']:.3f} Hz\n")
-                f.write(f"  Actual: {bf['actual_hz']:.3f} Hz\n")
-                f.write(f"  Error:  {bf['error_hz']:.3f} Hz ({bf['error_pct']:.1f}%)\n\n")
-            
-            if 'classification' in metrics:
-                cf = metrics['classification']
-                f.write(f"Classification Performance:\n")
-                f.write(f"  Total classifications: {cf['n_classifications']}\n")
-                if 'rate_per_sec' in cf:
-                    f.write(f"  Classification rate: {cf['rate_per_sec']:.1f} Hz\n")
-                f.write(f"  Mean confidence: {cf['mean_confidence']:.3f}\n")
-                f.write(f"  Target distribution:\n")
-                dist = cf['target_distribution']
-                for target, count in dist.items():
-                    pct = (count / cf['n_classifications'] * 100) if cf['n_classifications'] > 0 else 0
-                    f.write(f"    {target}: {count} ({pct:.1f}%)\n")
-        
-        print(f"[PERFORMANCE] Report saved to: {report_file.absolute()}")
+            print(f"[PERFORMANCE] Report saved to: {report_file.absolute()}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save performance report: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _play_score(self) -> None:
         """Play the current score."""

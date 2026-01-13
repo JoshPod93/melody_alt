@@ -314,24 +314,34 @@ class LSLReceiver:
         
         while not self._stop_event.is_set():
             try:
-                # Pull chunk of samples from LSL (larger chunks = more efficient)
-                samples, timestamps = self._inlet.pull_chunk(timeout=0.1)
+                # Pull chunk of samples from LSL more frequently (10ms timeout)
+                # More frequent pulls = fresher buffer, lower risk of LSL buffer overflow
+                # LSL has internal buffering, so small timeout is safe
+                samples, timestamps = self._inlet.pull_chunk(timeout=0.01)
                 
                 if samples:
                     samples = np.array(samples)
                     timestamps = np.array(timestamps)
                     
-                    # Accumulate in buffer
-                    accumulated_samples.extend(samples)
+                    # CRITICAL: Extract EEG channels immediately (first 8 channels)
+                    # This matches the method from unicorn_system_test
+                    # Unicorn sends 17 channels total: 8 EEG + 9 aux (accel, gyro, battery, etc.)
+                    if samples.shape[1] > UNICORN_N_EEG_CHANNELS:
+                        eeg_samples = samples[:, :UNICORN_N_EEG_CHANNELS]
+                    else:
+                        eeg_samples = samples
+                    
+                    # Accumulate in buffer (EEG only)
+                    accumulated_samples.extend(eeg_samples)
                     accumulated_timestamps.extend(timestamps)
                     
-                    # Add to circular buffer
-                    for i in range(len(samples)):
-                        self._buffer.append(samples[i])
+                    # Add to circular buffer (EEG channels only)
+                    for i in range(len(eeg_samples)):
+                        self._buffer.append(eeg_samples[i])
                         
                         # Put in queue for external processing (backward compatibility)
                         try:
-                            self._data_queue.put_nowait((samples[i], timestamps[i]))
+                            self._data_queue.put_nowait((eeg_samples[i], timestamps[i] if i < len(timestamps) else timestamps[-1]))
                         except queue.Full:
                             pass  # Drop oldest if queue full
                     
@@ -368,29 +378,32 @@ class LSLReceiver:
         Uses the accumulated buffer for efficient batch processing.
         This is much faster than pulling individual samples from the queue.
         
+        Buffer already contains only EEG channels (extracted immediately after LSL pull).
+        
         Args:
             n_samples: Number of samples to pull
             timeout: Total timeout (not used for buffer-based pulling)
             
         Returns:
             Tuple of (samples, timestamps) arrays
+            - samples: Shape (n_samples, 8) - EEG channels only
+            - timestamps: Uniform time axis based on sample rate (like unicorn_system_test)
         """
         # Get data directly from buffer (much faster than queue)
         buffer_data = self.get_buffer()
         
         if len(buffer_data) == 0:
-            return np.array([]).reshape(0, self.n_channels), np.array([])
+            return np.array([]).reshape(0, UNICORN_N_EEG_CHANNELS), np.array([])
         
         # Take the requested number of samples (most recent)
         n_take = min(n_samples, len(buffer_data))
         if n_take == 0:
-            return np.array([]).reshape(0, self.n_channels), np.array([])
+            return np.array([]).reshape(0, UNICORN_N_EEG_CHANNELS), np.array([])
         
         samples = buffer_data[-n_take:]
         
-        # Generate timestamps (approximate, based on sample rate)
-        # For precise timestamps, we'd need to track them separately
-        # But for processing, this is sufficient
+        # Generate uniform time axis based on sample rate (like unicorn_system_test)
+        # This is more reliable than using LSL timestamps which can have jitter
         timestamps = np.arange(len(samples)) / self.sample_rate
         
         return samples, timestamps

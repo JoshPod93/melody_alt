@@ -1,6 +1,25 @@
 ﻿# BCI-UPIC Project Progress Report
 ## Date: 2026-01-27 (Latest Update)
 
+### Latest Changes (2026-01-27)
+- ✅ **Fixed LSL data pulling method** - Now matches proven approach from unicorn_system_test
+  - Extract EEG channels (first 8) immediately after pulling from LSL
+  - Store only EEG channels in buffer (not all 17 channels)
+  - Use uniform time axis based on sample rate (more reliable than LSL timestamps)
+  - Background thread pulls every 10ms (was 100ms) for fresher buffer
+- ✅ **Restricted analysis to occipital channels only** - PO7, Oz, PO8 (indices 5, 6, 7)
+  - All preprocessing methods now return only occipital channels
+  - CAR still uses all 8 channels (needed for proper referencing)
+  - Classification receives only occipital channels (optimal for SSVEP)
+  - Updated `pull_and_process()`, `get_recent_data()`, and `get_lsl_buffer()` to return 3 channels
+- ✅ **Optimized timings**
+  - Background thread: 10ms timeout (was 100ms) - keeps buffer fresh
+  - Main thread: 50ms updates (unchanged) - 20Hz classification rate
+  - Chunk size: 50ms worth (~12-13 samples) - matches update interval for better efficiency
+- ✅ **Improved data flow**
+  - LSL (17 channels) → Extract EEG (8 channels) immediately → Store in buffer (8 channels)
+  - Process with CAR (all 8 channels) → Return occipital only (3 channels: PO7, Oz, PO8) → Classify
+
 ## Major Achievements
 
 ### 1. Complete BCI System Implementation
@@ -147,6 +166,27 @@
 - excess/ - Unused/junk scripts
 
 ## Next Steps
+
+### Tomorrow's Tasks (2026-01-28)
+1. **Optimization of timings**
+   - Fine-tune update intervals based on performance metrics
+   - Optimize chunk sizes for best balance between responsiveness and CPU usage
+   - Test and validate timing improvements
+
+2. **Refinement of preprocessing and classification**
+   - Tune filter parameters based on real data analysis
+   - Optimize classification window size and overlap
+   - Improve CCA reference signal generation
+   - Fine-tune confidence thresholds
+
+3. **CRITICAL: Implement identical data pipeline in calibration**
+   - Apply same data pulling method (extract EEG immediately, uniform time axis)
+   - Apply same preprocessing (CAR, filtering, occipital extraction)
+   - Apply same classification method (CCA with same parameters)
+   - **Ensure stimuli behave identically in calibration vs main experiment**
+   - This is essential for calibration validity - calibration must match live capture exactly
+
+### Future Improvements
 1. **Performance Optimization** (HIGH PRIORITY)
    - Implement Windows multimedia timer for better flicker precision
    - Consider Cython for LSL data pulling
@@ -161,3 +201,4 @@
 
 ---
 Generated: 2026-01-12 14:10:00
+Last Updated: 2026-01-27

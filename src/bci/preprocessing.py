@@ -337,17 +337,28 @@ class EEGPreprocessor:
     
     def get_recent_data(self, seconds: float) -> NDArray[np.float64]:
         """
-        Get the most recent N seconds of data.
+        Get the most recent N seconds of data (occipital channels only).
         
         Args:
             seconds: Number of seconds of data to retrieve
             
         Returns:
-            Array of shape (n_samples, n_channels)
+            Array of shape (n_samples, 3) - occipital channels only (PO7, Oz, PO8)
         """
         n_samples = min(int(seconds * self.sample_rate), self._buffer_size)
         buffer_array = self.get_buffer()
-        return buffer_array[-n_samples:]
+        data = buffer_array[-n_samples:]
+        
+        # Extract only occipital channels (PO7, Oz, PO8 = indices 5, 6, 7)
+        if len(data) > 0 and data.shape[1] >= 8:
+            occipital_indices = [5, 6, 7]
+            return data[:, occipital_indices]
+        elif len(data) > 0 and data.shape[1] == 3:
+            # Already occipital channels (from previous processing)
+            return data
+        else:
+            # Fallback: return as-is if structure is unexpected
+            return data
     
     def compute_psd(
         self,
@@ -532,6 +543,7 @@ class LSLPreprocessor(EEGPreprocessor):
                 self.n_channels = 8  # Force 8 EEG channels
                 
                 print(f"[LSL] Stream has {self._stream_n_channels} channels, using first 8 (EEG)")
+                print(f"[LSL] Analysis restricted to occipital channels: PO7, Oz, PO8 (indices 5, 6, 7)")
                 
                 # Reinitialize filters for correct sample rate and 8 channels
                 self._init_filters()
@@ -565,55 +577,69 @@ class LSLPreprocessor(EEGPreprocessor):
         """
         Pull data from LSL and process it.
         
-        Handles 17-channel Unicorn streams by extracting only EEG channels.
+        LSL receiver already extracts EEG channels (first 8) immediately after pulling.
+        This method processes the EEG data and returns only occipital channels.
         
         Args:
             n_samples: Number of samples to pull
             
         Returns:
-            Processed EEG data (8 channels)
+            Processed EEG data (occipital channels only: PO7, Oz, PO8 = 3 channels)
         """
         if not self.is_lsl_connected:
             return np.array([])
         
-        # Pull from LSL
+        # Pull from LSL (already contains only EEG channels)
         samples, timestamps = self._lsl_receiver.pull_chunk(n_samples)
         
         if len(samples) == 0:
             return np.array([])
         
-        # ALWAYS extract first 8 EEG channels (Unicorn sends 17 total: 8 EEG + 9 aux)
-        if samples.shape[1] > 8:
-            samples = samples[:, :8]  # Take first 8 channels (EEG only)
+        # Process all EEG channels (needed for CAR)
+        processed = self.process_chunk(samples)
         
-        # Process
-        return self.process_chunk(samples)
+        # Extract only occipital channels (PO7, Oz, PO8 = indices 5, 6, 7)
+        # SSVEP is strongest in occipital cortex
+        if processed.shape[1] >= 8:
+            occipital_indices = [5, 6, 7]  # PO7, Oz, PO8
+            return processed[:, occipital_indices]
+        else:
+            # Fallback: return all channels if structure is unexpected
+            return processed
     
     def get_lsl_buffer(self, seconds: float = 1.0) -> NDArray[np.float64]:
         """
-        Get processed data from LSL buffer.
+        Get processed data from LSL buffer (occipital channels only).
         
         Args:
             seconds: How many seconds of data
-            
+        
         Returns:
-            Processed buffer data
+            Processed buffer data (occipital channels only: PO7, Oz, PO8 = 3 channels)
         """
         if not self.is_lsl_connected:
-            return self.get_recent_data(seconds)
+            # For non-LSL mode, get recent data and extract occipital
+            data = self.get_recent_data(seconds)
+            if len(data) > 0 and data.shape[1] >= 8:
+                occipital_indices = [5, 6, 7]  # PO7, Oz, PO8
+                return data[:, occipital_indices]
+            return data
         
-        # Get raw from LSL
+        # Get raw from LSL (already contains only EEG channels)
         raw_data = self._lsl_receiver.get_recent_data(seconds)
         
         if len(raw_data) == 0:
             return np.array([])
         
-        # ALWAYS extract first 8 EEG channels (Unicorn sends 17 total)
-        if raw_data.shape[1] > 8:
-            raw_data = raw_data[:, :8]
+        # Process the chunk (all EEG channels needed for CAR)
+        processed = self.process_chunk(raw_data)
         
-        # Process the chunk
-        return self.process_chunk(raw_data)
+        # Extract only occipital channels (PO7, Oz, PO8 = indices 5, 6, 7)
+        if processed.shape[1] >= 8:
+            occipital_indices = [5, 6, 7]
+            return processed[:, occipital_indices]
+        else:
+            return processed
 
 
 if __name__ == "__main__":
