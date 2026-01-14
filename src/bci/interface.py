@@ -39,8 +39,8 @@ from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
 from .stimulus import SSVEPStimulus, FlickerState
 from .p300_stimulus import P300Stimulus, FlashState
 from .preprocessing import EEGPreprocessor, SimulatedEEGSource, LSLPreprocessor
-from .classifier import SSVEPClassifier, AttentionTarget, ClassificationResult
-from .p300_classifier import P300Classifier
+from .classifier import SSVEPClassifier, ClassificationResult as SSVEPClassificationResult
+from .p300_classifier import P300Classifier, AttentionTarget, ClassificationResult
 from .controller import BCICursorController, ControllerState, CursorPosition
 from .score import BCIScore, play_score, synthesize_score
 from .calibration import CalibrationData, CalibrationSession
@@ -1022,7 +1022,10 @@ class BCICompositionWindow(QMainWindow):
         
         # Start
         self.controller.start()
-        # NOTE: No stimulus.start() - widgets are independent (same as screen calibration)
+        # Start P300 stimulus (handles flash timing)
+        self.stimulus.start()
+        self._flash_onsets.clear()
+        self._eeg_buffer.clear()
         
         # Update UI first
         self.start_btn.setEnabled(False)
@@ -1133,52 +1136,107 @@ class BCICompositionWindow(QMainWindow):
                     )
     
     def _update_composition(self) -> None:
-        """Update composition state."""
+        """Update composition state - P300 paradigm."""
         if self.controller.state != ControllerState.RUNNING:
             if self.controller.state == ControllerState.COMPLETED:
                 self._stop_composition()
             return
         
-        # Get EEG data and classify
+        # Update P300 stimulus (handles flash timing)
+        self.stimulus.update()
+        
+        # Update flash widgets
+        self.top_target.update_flash()
+        self.bottom_target.update_flash()
+        
+        # Track flash onsets (for epoching)
+        flash_onsets = self.stimulus.get_flash_onsets()
+        if flash_onsets:
+            # Get new flash onsets since last check
+            if len(flash_onsets) > len(self._flash_onsets):
+                new_onsets = flash_onsets[len(self._flash_onsets):]
+                self._flash_onsets.extend(new_onsets)
+                
+                # Send markers for new flashes
+                if self.marker_sender:
+                    for position, flash_time in new_onsets:
+                        marker = f"P300_FLASH_{position.upper()}"
+                        self.marker_sender.send_marker(marker, flash_time)
+        
+        # Get EEG data and classify using P300 epoching
         if self._use_lsl and self._lsl_connected:
-            # Pull chunk matching update interval (50ms = ~12-13 samples at 250Hz)
-            # Matches update rate for better efficiency and vectorization
+            # Pull chunk and add to buffer
             n_samples_per_update = int(0.050 * self.preprocessor.sample_rate)  # 50ms worth
             processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update)
             
             if len(processed) > 0:
-                # Use shorter window for faster classification (0.3s instead of 0.5s)
-                # For FBCCA, use minimal preprocessing (CAR + notch only, no bandpass)
-                # For regular CCA, use full preprocessing (CAR + notch + bandpass)
-                use_fbcca = True  # Switch to FBCCA for better accuracy
-                if use_fbcca:
-                    eeg_buffer = self.preprocessor.get_recent_data_minimal(0.3)
-                    result = self.classifier.classify(eeg_buffer, method="fbcca")
+                # Add to buffer with timestamp
+                current_time = time.perf_counter()
+                self._eeg_buffer.append((processed, current_time))
+                
+                # Trim buffer to max duration
+                buffer_start_time = current_time - self._buffer_max_seconds
+                self._eeg_buffer = [(data, ts) for data, ts in self._eeg_buffer if ts >= buffer_start_time]
+                
+                # Classify using P300 epoching if we have flash onsets
+                if len(self._flash_onsets) >= self.classifier.n_epochs_to_average:
+                    # Reconstruct continuous EEG data with timestamps
+                    if len(self._eeg_buffer) > 0:
+                        all_data = np.vstack([data for data, _ in self._eeg_buffer])
+                        # Create timestamps array
+                        buffer_times = []
+                        sample_rate = self.preprocessor.sample_rate
+                        for i, (data, ts) in enumerate(self._eeg_buffer):
+                            n_samples = len(data)
+                            timestamps = np.linspace(ts, ts + (n_samples - 1) / sample_rate, n_samples)
+                            buffer_times.extend(timestamps)
+                        buffer_times = np.array(buffer_times)
+                        
+                        # Classify using P300
+                        result = self.classifier.classify_averaged(
+                            all_data,
+                            self._flash_onsets,
+                            buffer_times
+                        )
+                        
+                        # Track classification metrics
+                        classify_time = time.perf_counter()
+                        self._classification_results.append(result)
+                        self._classification_times.append(classify_time - self._composition_start_time)
+                        
+                        # Debug: Log classification results periodically
+                        if not hasattr(self, '_last_classify_log_time'):
+                            self._last_classify_log_time = 0
+                        current_time_log = time.time()
+                        if current_time_log - self._last_classify_log_time > 1.0:  # Log every second
+                            print(f"[P300 CLASSIFY] Target={result.target.name}, Confidence={result.confidence:.2f}, "
+                                  f"Top_amp={result.p300_amplitude_top:.3f}, Bottom_amp={result.p300_amplitude_bottom:.3f}, "
+                                  f"Score={result.raw_score:.3f}")
+                            self._last_classify_log_time = current_time_log
+                    else:
+                        result = ClassificationResult(
+                            target=AttentionTarget.NONE,
+                            confidence=0.0,
+                            p300_amplitude_top=0.0,
+                            p300_amplitude_bottom=0.0,
+                            raw_score=0.0
+                        )
                 else:
-                    eeg_buffer = self.preprocessor.get_recent_data(0.3)
-                    result = self.classifier.classify(eeg_buffer, method="cca")
-                
-                # Track classification metrics
-                classify_time = time.perf_counter()
-                self._classification_results.append(result)
-                self._classification_times.append(classify_time - self._composition_start_time)
-                
-                # Debug: Log classification results periodically
-                if not hasattr(self, '_last_classify_log_time'):
-                    self._last_classify_log_time = 0
-                current_time = time.time()
-                if current_time - self._last_classify_log_time > 1.0:  # Log every second
-                    print(f"[CLASSIFY] Target={result.target.name}, Confidence={result.confidence:.2f}, "
-                          f"Higher={result.power_higher_freq:.3f}, Lower={result.power_lower_freq:.3f}, "
-                          f"Score={result.raw_score:.3f}")
-                    self._last_classify_log_time = current_time
+                    # Not enough epochs yet - wait
+                    result = ClassificationResult(
+                        target=AttentionTarget.NONE,
+                        confidence=0.0,
+                        p300_amplitude_top=0.0,
+                        p300_amplitude_bottom=0.0,
+                        raw_score=0.0
+                    )
             else:
                 # No data available - hold position
                 result = ClassificationResult(
                     target=AttentionTarget.NONE,
                     confidence=0.0,
-                    power_higher_freq=0.0,
-                    power_lower_freq=0.0,
+                    p300_amplitude_top=0.0,
+                    p300_amplitude_bottom=0.0,
                     raw_score=0.0
                 )
         elif self.EXPERIMENT_MODE:
