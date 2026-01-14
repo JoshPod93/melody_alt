@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-01-13T17:58:06.105109",
+  "timestamp": "2026-01-14T10:28:13.554812",
   "tests": {
     "lsl_connection": {
       "status": "passed",
-      "stream_name": "UN-2021.12.46",
+      "stream_name": "UN-2021.12.42",
       "channels": 17,
       "sample_rate": 250.0
     },
@@ -26,12 +26,12 @@
     "bandwidth": {
       "status": "passed",
       "expected_rate": 250,
-      "actual_rate": 250.72,
+      "actual_rate": 250.48,
       "meets_specification": true
     },
     "battery": {
       "status": "passed",
-      "battery_percent": 86.7,
+      "battery_percent": 100.0,
       "is_ok": true,
       "channel": 14
     },
@@ -42,57 +42,57 @@
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 541.89,
-          "peak_to_peak": 1943.26
+          "std": 708.21,
+          "peak_to_peak": 3370.66
         },
         "C3": {
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 141.81,
-          "peak_to_peak": 613.42
+          "std": 615.68,
+          "peak_to_peak": 2267.34
         },
         "Cz": {
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 320.39,
-          "peak_to_peak": 1407.0
+          "std": 586.35,
+          "peak_to_peak": 2206.47
         },
         "C4": {
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 950.9,
-          "peak_to_peak": 3702.43
+          "std": 614.64,
+          "peak_to_peak": 2434.28
         },
         "Pz": {
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 246.17,
-          "peak_to_peak": 1244.72
+          "std": 156.49,
+          "peak_to_peak": 650.16
         },
         "PO7": {
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 157.75,
-          "peak_to_peak": 671.54
+          "std": 718.05,
+          "peak_to_peak": 2733.34
         },
         "Oz": {
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 152.65,
-          "peak_to_peak": 654.46
+          "std": 597.12,
+          "peak_to_peak": 2570.25
         },
         "PO8": {
           "quality": "poor",
           "impedance_kohm": 60.0,
           "status": "high",
-          "std": 152.47,
-          "peak_to_peak": 654.1
+          "std": 555.32,
+          "peak_to_peak": 2323.69
         }
       },
       "summary": {
@@ -105,8 +105,8 @@
     "data_capture": {
       "status": "passed",
       "samples": 500,
-      "plot_path": "C:\\Users\\joshp\\Desktop\\hackathon\\unicorn_system_test\\reports\\eeg_plot_20260113_175827.png"
+      "plot_path": "C:\\Users\\joshp\\Desktop\\hackathon\\unicorn_system_test\\reports\\eeg_plot_20260114_102835.png"
     }
   },
-  "plot_path": "C:\\Users\\joshp\\Desktop\\hackathon\\unicorn_system_test\\reports\\eeg_plot_20260113_175827.png"
+  "plot_path": "C:\\Users\\joshp\\Desktop\\hackathon\\unicorn_system_test\\reports\\eeg_plot_20260114_102835.png"
 }

@@ -1,5 +1,14 @@
 ﻿# BCI-UPIC Project Progress Report
-## Date: 2026-01-27 (Latest Update)
+## Date: 2026-01-14 (Latest Update)
+
+### Latest Changes (2026-01-14)
+- ✅ **Fixed CCA DOWN target classification** - Critical fix for SSVEP classification accuracy
+  - Root cause: Padding data with zeros broke phase alignment, especially for DOWN reference (π phase offset)
+  - Solution: Resize references to match chunk size instead of padding data (preserves phase profile)
+  - Applied to both main live composition and data validation methods
+  - Test results: `corr_down` now shows real values (0.674976) instead of always 0.0
+  - Impact: DOWN target predictions now work correctly, classification accuracy significantly improved
+  - Files modified: `src/bci/classifier.py` - `classify_cca()` method
 
 ### Latest Changes (2026-01-27)
 - ✅ **Fixed LSL data pulling method** - Now matches proven approach from unicorn_system_test

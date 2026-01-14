@@ -160,6 +160,26 @@ unicorn_system_test/
 3. **Minimal processing**: Only essential CAR and notch filtering for visualization
 4. **Standalone environment**: Isolated from main project dependencies
 
+### Referencing Method: Common Average Reference (CAR)
+
+**CAR is appropriate for:**
+- ✅ Multi-channel EEG signals (requires 3+ channels)
+- ✅ SSVEP studies (standard practice)
+- ✅ Event-related potential (ERP) studies
+- ✅ General EEG analysis with multiple channels
+
+**CAR is NOT appropriate for:**
+- ❌ Single-channel recordings (needs multiple channels to compute average)
+- ❌ EMG (electromyography) - uses dedicated reference electrode
+- ❌ ECG (electrocardiography) - uses specific lead configurations
+- ❌ EOG (electrooculography) - may use linked mastoids or dedicated reference
+- ❌ Systems with dedicated reference channels (use those instead)
+
+**Current Implementation:**
+- CAR is applied to all 8 EEG channels from Unicorn Black
+- This is appropriate since we have multiple channels and no dedicated reference in the stream
+- The Unicorn Black has built-in hardware reference/ground, but CAR provides additional software-based noise reduction
+
 ### Known Limitations
 - Impedance values are estimated from signal characteristics (not direct hardware readings)
 - Battery detection searches all channels (may need adjustment for different stream configurations)

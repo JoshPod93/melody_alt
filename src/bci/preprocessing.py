@@ -3,7 +3,7 @@ EEG Preprocessing module for BCI-UPIC.
 
 Provides real-time signal processing for SSVEP detection:
 - Common Average Reference (CAR) - removes common noise, CRITICAL for SSVEP
-- Bandpass filtering (focus on 5-25Hz for our 12Hz and 15Hz targets + harmonics)
+- Bandpass filtering (10-32Hz: focused on SSVEP range 11-15Hz + harmonics up to 30Hz)
 - Notch filtering for powerline noise (50/60Hz)
 - Artifact rejection
 - Signal normalization
@@ -51,20 +51,21 @@ class EEGPreprocessor:
     """
     Real-time EEG preprocessing for SSVEP detection.
     
-    Optimized for detecting 10Hz and 15Hz SSVEP responses.
+    Optimized for detecting SSVEP responses at 11-15 Hz with harmonics up to 30 Hz.
+    Uses focused bandpass filtering (10-32 Hz) to improve signal-to-noise ratio.
     
     Attributes:
         sample_rate: EEG sampling rate in Hz (default 256)
         n_channels: Number of EEG channels
-        bandpass_low: Lower cutoff frequency (Hz)
-        bandpass_high: Upper cutoff frequency (Hz)
+        bandpass_low: Lower cutoff frequency (Hz) - removes low-freq noise/drift
+        bandpass_high: Upper cutoff frequency (Hz) - includes harmonics up to 30 Hz
         notch_freq: Powerline frequency for notch filter (50 or 60 Hz)
         buffer_seconds: Size of the rolling buffer in seconds
     """
     sample_rate: float = 256.0
     n_channels: int = 8
-    bandpass_low: float = 5.0   # Include harmonics below target frequencies
-    bandpass_high: float = 25.0  # Include first harmonic of 15Hz (30Hz)
+    bandpass_low: float = 10.0   # Lower cutoff: remove low-freq noise/drift, keep SSVEP signals (11-15 Hz)
+    bandpass_high: float = 32.0  # Upper cutoff: include harmonics up to 30 Hz (with margin)
     notch_freq: float = 50.0     # 50Hz for EU, 60Hz for US
     buffer_seconds: float = 2.0   # 2 second rolling buffer
     use_car: bool = True  # Common Average Reference - CRITICAL for SSVEP signal quality

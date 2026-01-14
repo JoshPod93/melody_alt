@@ -225,6 +225,12 @@ def plot_data(data_result: dict, report_dir: Path, timestamp: str) -> Path:
     
     # Apply Common Average Reference (CAR) - vectorized for efficiency
     # CAR removes common-mode noise by subtracting the mean across all channels from each channel
+    # NOTE: CAR is appropriate for multi-channel EEG signals. For other bio-signals:
+    #   - EMG: Use dedicated reference electrode (not CAR)
+    #   - EOG: May use linked mastoids or dedicated reference
+    #   - ECG: Uses specific lead configurations (not CAR)
+    #   - Single-channel: CAR not applicable (needs multiple channels)
+    # For Unicorn Black EEG (8 channels), CAR is standard practice for SSVEP
     data_car = data.copy()
     car_ref = np.mean(data_car, axis=1, keepdims=True)
     data_car = data_car - car_ref

@@ -69,7 +69,12 @@ class SSVEPClassifier:
     occipital_channels: List[int] = field(default_factory=lambda: [5, 6, 7])  # PO7, Oz, PO8
     _screen_calibration: Optional[Dict] = field(default=None, repr=False)  # Screen calibration data
     
-    # CCA reference signals - can be from calibration or synthetic
+    # CCA reference signals - synthetic (screen-calibrated) + calibrated (subject-specific)
+    _ref_signals_up_synthetic: NDArray[np.float64] = field(init=False, repr=False)
+    _ref_signals_down_synthetic: NDArray[np.float64] = field(init=False, repr=False)
+    _ref_signals_up_calibrated: Optional[NDArray[np.float64]] = field(default=None, repr=False)
+    _ref_signals_down_calibrated: Optional[NDArray[np.float64]] = field(default=None, repr=False)
+    # Combined references (synthetic + calibrated concatenated)
     _ref_signals_up: NDArray[np.float64] = field(init=False, repr=False)
     _ref_signals_down: NDArray[np.float64] = field(init=False, repr=False)
     _using_calibration: bool = field(default=False, repr=False)
@@ -151,14 +156,44 @@ class SSVEPClassifier:
                         ref_up = np.hstack([ref_up, pad])
                         ref_down = np.hstack([ref_down, pad])
                 
-                self._ref_signals_up = ref_up
-                self._ref_signals_down = ref_down
+                # Store calibrated references separately
+                self._ref_signals_up_calibrated = ref_up
+                self._ref_signals_down_calibrated = ref_down
+                
+                # Validate reference signals before combining
+                if np.all(ref_up == 0) or np.all(np.abs(ref_up) < 1e-10):
+                    print(f"[CLASSIFIER ERROR] UP reference is all zeros!")
+                if np.all(ref_down == 0) or np.all(np.abs(ref_down) < 1e-10):
+                    print(f"[CLASSIFIER ERROR] DOWN reference is all zeros!")
+                
+                # Check shapes match for hstack
+                if self._ref_signals_up_synthetic.shape[0] != ref_up.shape[0]:
+                    print(f"[CLASSIFIER ERROR] Shape mismatch: synthetic_up={self._ref_signals_up_synthetic.shape}, "
+                          f"calibrated_up={ref_up.shape}")
+                if self._ref_signals_down_synthetic.shape[0] != ref_down.shape[0]:
+                    print(f"[CLASSIFIER ERROR] Shape mismatch: synthetic_down={self._ref_signals_down_synthetic.shape}, "
+                          f"calibrated_down={ref_down.shape}")
+                
+                # Combine synthetic + calibrated references (additive approach)
+                # This gives CCA more information: screen-calibrated + subject-specific
+                # Shape: (n_samples, 2*n_harmonics + 2*n_harmonics) = (n_samples, 4*n_harmonics)
+                self._ref_signals_up = np.hstack([self._ref_signals_up_synthetic, ref_up])
+                self._ref_signals_down = np.hstack([self._ref_signals_down_synthetic, ref_down])
+                
+                # Validate combined references
+                up_var = np.var(self._ref_signals_up, axis=0)
+                down_var = np.var(self._ref_signals_down, axis=0)
+                print(f"[CLASSIFIER] Combined UP reference variance: min={np.min(up_var):.6f}, max={np.max(up_var):.6f}")
+                print(f"[CLASSIFIER] Combined DOWN reference variance: min={np.min(down_var):.6f}, max={np.max(down_var):.6f}")
+                
                 self._using_calibration = True
                 
                 # Debug: Verify which frequency is mapped to which
                 print(f"[CLASSIFIER] Loaded calibration: UP={ref_up.shape}, DOWN={ref_down.shape}")
                 print(f"[CLASSIFIER] Reference structure: {self.n_harmonics} harmonics = "
-                      f"{2*self.n_harmonics} components (sin/cos pairs)")
+                      f"{2*self.n_harmonics} components (sin/cos pairs) per reference set")
+                print(f"[CLASSIFIER] Combined references: {self._ref_signals_up.shape[1]} total components "
+                      f"(synthetic {2*self.n_harmonics} + calibrated {2*self.n_harmonics})")
                 print(f"[CLASSIFIER] Reference mapping: UP=higher_freq ({self.target_frequencies[0]:.2f}Hz), "
                       f"DOWN=lower_freq ({self.target_frequencies[1]:.2f}Hz)")
                 return True
@@ -223,9 +258,13 @@ class SSVEPClassifier:
             ref_array = np.array(ref_signals).T  # Shape: (n_samples, 2*n_harmonics)
             
             if freq_idx == 0:
-                self._ref_signals_up = ref_array
+                self._ref_signals_up_synthetic = ref_array
             else:
-                self._ref_signals_down = ref_array
+                self._ref_signals_down_synthetic = ref_array
+        
+        # Initialize combined references (synthetic only initially)
+        self._ref_signals_up = self._ref_signals_up_synthetic.copy()
+        self._ref_signals_down = self._ref_signals_down_synthetic.copy()
     
     def classify_fft(self, eeg_data: NDArray[np.float64]) -> ClassificationResult:
         """
@@ -298,6 +337,13 @@ class SSVEPClassifier:
         Uses ONLY CCA when calibration is available, FFT otherwise.
         No mixing - one method only for maximum speed.
         
+        This method is used by both:
+        - Main live composition (0.3s chunks every 50ms)
+        - Data validation/checking (0.3s chunks for testing)
+        
+        References are automatically resized to match data chunk size to preserve
+        phase alignment (especially important for DOWN target with π phase offset).
+        
         Args:
             eeg_data: EEG data of shape (n_samples, n_channels)
             
@@ -312,29 +358,77 @@ class SSVEPClassifier:
             else:
                 data = eeg_data
             
-            # Ensure data length matches reference signals
+            # Resize reference signals to match data length (preserves phase profile)
+            # This is better than padding data with zeros, which breaks phase alignment
+            n_data = data.shape[0]
             n_ref = self._ref_signals_up.shape[0]
-            if data.shape[0] > n_ref:
-                data = data[-n_ref:]
-            elif data.shape[0] < n_ref:
-                # Pad with zeros (not ideal, but handles edge case)
-                pad_size = n_ref - data.shape[0]
-                data = np.vstack([np.zeros((pad_size, data.shape[1])), data])
             
-            # Compute CCA correlation for each target (references include 2 harmonics)
-            corr_up = self._cca_correlation(data, self._ref_signals_up)
-            corr_down = self._cca_correlation(data, self._ref_signals_down)
+            if n_data != n_ref:
+                # Resize references to match data chunk size (preserves phase)
+                ref_up_resized = self._resize_reference(self._ref_signals_up, n_data)
+                ref_down_resized = self._resize_reference(self._ref_signals_down, n_data)
+            else:
+                ref_up_resized = self._ref_signals_up
+                ref_down_resized = self._ref_signals_down
             
-            # DEBUG: Log correlations periodically to diagnose inversion
-            if not hasattr(self, '_last_cca_log_time'):
-                self._last_cca_log_time = 0
+            # Compute CCA correlation for each target using resized references
+            # References include synthetic (screen-calibrated) + calibrated (subject-specific) if available
+            try:
+                corr_up = self._cca_correlation(data, ref_up_resized)
+            except Exception as e:
+                print(f"[CCA ERROR] Failed UP correlation: {e}")
+                print(f"  data.shape={data.shape}, ref_up.shape={ref_up_resized.shape}")
+                corr_up = 0.0
+            
+            try:
+                corr_down = self._cca_correlation(data, ref_down_resized)
+                # Debug: Check if DOWN correlation is suspiciously zero
+                if corr_down < 1e-6:
+                    print(f"[CCA WARNING] DOWN correlation is near zero: {corr_down:.6f}")
+                    print(f"  data.shape={data.shape}, ref_down.shape={ref_down_resized.shape}")
+                    print(f"  ref_down stats: min={np.min(ref_down_resized):.6f}, max={np.max(ref_down_resized):.6f}, "
+                          f"mean={np.mean(ref_down_resized):.6f}, var={np.var(ref_down_resized, axis=0)[:3]}")
+            except Exception as e:
+                print(f"[CCA ERROR] Failed DOWN correlation: {e}")
+                print(f"  data.shape={data.shape}, ref_down.shape={ref_down_resized.shape}")
+                import traceback
+                traceback.print_exc()
+                corr_down = 0.0
+            
+            # DEBUG: Log all CCA correlations to file for validation analysis
+            import logging
             import time
-            current_time = time.time()
-            if current_time - self._last_cca_log_time > 2.0:  # Log every 2 seconds
-                print(f"[CCA DEBUG] corr_up={corr_up:.4f}, corr_down={corr_down:.4f}, "
-                      f"diff={corr_up - corr_down:.4f}, "
-                      f"UP_freq={self.target_frequencies[0]:.2f}Hz, DOWN_freq={self.target_frequencies[1]:.2f}Hz")
-                self._last_cca_log_time = current_time
+            from pathlib import Path
+            
+            # Set up logger for CCA debug info
+            if not hasattr(self, '_cca_logger_initialized'):
+                log_file = Path("validation_plots") / "cca_debug.log"
+                log_file.parent.mkdir(exist_ok=True)
+                
+                # Create logger
+                self._cca_logger = logging.getLogger('cca_debug')
+                self._cca_logger.setLevel(logging.DEBUG)
+                self._cca_logger.handlers.clear()  # Clear any existing handlers
+                
+                # File handler
+                fh = logging.FileHandler(log_file, mode='a')
+                fh.setLevel(logging.DEBUG)
+                formatter = logging.Formatter('%(asctime)s - %(message)s')
+                fh.setFormatter(formatter)
+                self._cca_logger.addHandler(fh)
+                
+                self._cca_logger_initialized = True
+                self._cca_log_count = 0
+            
+            # Log every correlation (useful for validation)
+            self._cca_log_count += 1
+            self._cca_logger.debug(
+                f"CCA#{self._cca_log_count}: corr_up={corr_up:.6f}, corr_down={corr_down:.6f}, "
+                f"diff={corr_up - corr_down:.6f}, "
+                f"UP_freq={self.target_frequencies[0]:.2f}Hz, DOWN_freq={self.target_frequencies[1]:.2f}Hz, "
+                f"prediction={'UP' if corr_up > corr_down else 'DOWN'}, "
+                f"data_shape={data.shape}, ref_up_shape={ref_up_resized.shape}, ref_down_shape={ref_down_resized.shape}"
+            )
             
             # CCA correlation difference
             cca_diff = corr_up - corr_down
@@ -392,6 +486,17 @@ class SSVEPClassifier:
         Cyy += reg * np.eye(Cyy.shape[0])
         
         try:
+            # Check for invalid inputs
+            if Y.shape[1] == 0:
+                print(f"[CCA WARNING] Empty reference signals! Y.shape={Y.shape}")
+                return 0.0
+            
+            # Check if Y has zero variance (all same values)
+            Y_var = np.var(Y, axis=0)
+            if np.all(Y_var < 1e-10):
+                print(f"[CCA WARNING] Reference signals have zero variance! Y_var={Y_var}")
+                return 0.0
+            
             # Solve generalized eigenvalue problem
             Cxx_inv = np.linalg.inv(Cxx)
             Cyy_inv = np.linalg.inv(Cyy)
@@ -401,8 +506,16 @@ class SSVEPClassifier:
             
             # Return maximum correlation (square root of max eigenvalue)
             max_eigenvalue = np.max(np.real(eigenvalues))
-            return np.sqrt(max(0, max_eigenvalue))
-        except np.linalg.LinAlgError:
+            corr = np.sqrt(max(0, max_eigenvalue))
+            
+            # Debug: Log if correlation is suspiciously low
+            if corr < 1e-6:
+                print(f"[CCA WARNING] Very low correlation: {corr:.6f}, Y.shape={Y.shape}, Y_var={Y_var[:3]}")
+            
+            return corr
+        except np.linalg.LinAlgError as e:
+            print(f"[CCA ERROR] Linear algebra error: {e}, X.shape={X.shape}, Y.shape={Y.shape}")
+            print(f"  Y stats: mean={np.mean(Y, axis=0)[:3]}, var={np.var(Y, axis=0)[:3]}")
             return 0.0
     
     def classify(

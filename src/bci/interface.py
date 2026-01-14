@@ -18,6 +18,13 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
 from enum import Enum
+from datetime import datetime
+
+# Matplotlib for plotting (use Agg backend for non-interactive)
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from scipy import signal as scipy_signal
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -768,6 +775,17 @@ class BCICompositionWindow(QMainWindow):
         cal_layout.addWidget(self.load_cal_btn)
         
         layout.addWidget(cal_group)
+        
+        # Data Validation
+        validation_group = QGroupBox("Data Validation")
+        validation_layout = QHBoxLayout(validation_group)
+        
+        self.validate_btn = QPushButton("🔍 Check Data")
+        self.validate_btn.clicked.connect(self._start_data_validation)
+        self.validate_btn.setToolTip("Run 10-second test with flickering, record data, and generate diagnostic plots")
+        validation_layout.addWidget(self.validate_btn)
+        
+        layout.addWidget(validation_group)
         
         # LSL Connection
         lsl_group = QGroupBox("EEG Source")
@@ -1932,6 +1950,899 @@ class BCICompositionWindow(QMainWindow):
                 
         except Exception as e:
             QMessageBox.warning(self, "Load Error", f"Error loading calibration: {e}")
+    
+    def _start_data_validation(self) -> None:
+        """Run data validation test: flicker for 10 seconds and plot data."""
+        if not self._use_lsl or not self._lsl_connected:
+            QMessageBox.warning(
+                self,
+                "LSL Required",
+                "Please connect to LSL first.\n\n"
+                "Data validation requires real EEG data from your headset."
+            )
+            return
+        
+        # Disable button during validation
+        self.validate_btn.setEnabled(False)
+        self.status_label.setText("Data validation starting... Get ready!")
+        QApplication.processEvents()
+        
+        # Start validation in background
+        QTimer.singleShot(1000, self._run_data_validation)
+    
+    def _run_data_validation(self) -> None:
+        """Execute the structured data validation test with classification."""
+        try:
+            # Clear validation_plots folder at start
+            validation_dir = Path("validation_plots")
+            if validation_dir.exists():
+                for file in validation_dir.glob("*"):
+                    try:
+                        file.unlink()
+                        print(f"[VALIDATION] Cleared old file: {file.name}")
+                    except Exception as e:
+                        print(f"[VALIDATION] Warning: Could not delete {file}: {e}")
+            
+            # Protocol timings
+            baseline_duration = 2.0  # 2 seconds baseline (flickering active, no indicator)
+            target_duration = 10.0   # 10 seconds per target
+            transition_duration = 1.0  # 1 second transition (indicator moves, trigger sent)
+            
+            # Initialize data storage
+            self._validation_baseline_data = []
+            self._validation_top_target_data = {'raw': [], 'processed': [], 'timestamps': []}
+            self._validation_bottom_target_data = {'raw': [], 'processed': [], 'timestamps': []}
+            self._validation_baseline_mean = None
+            self._validation_phase_markers = []  # Store phase transitions with timestamps
+            
+            self._validation_start_time = time.perf_counter()
+            self._validation_stopped = False
+            self._validation_current_phase = 'baseline'
+            self._validation_phase_start_time = time.perf_counter()
+            
+            # START FLICKERING FIRST (both targets)
+            self.top_target.set_active(True)
+            self.bottom_target.set_active(True)
+            print(f"[VALIDATION] Flickering started - both targets active")
+            
+            # Send validation start marker
+            if self.marker_sender:
+                self.marker_sender.send("Validation:Start")
+            
+            # Phase 1: Baseline (flickering active, no indicators, no data collection yet)
+            self.status_label.setText(f"Flickering active - Baseline ({baseline_duration}s)... Stay still")
+            self.top_indicator.set_active(False)
+            self.bottom_indicator.set_active(False)
+            QApplication.processEvents()
+            
+            # Start data collection timer
+            update_interval = 50  # ms
+            self._validation_timer = QTimer()
+            self._validation_timer.timeout.connect(self._collect_validation_sample)
+            self._validation_timer.start(update_interval)
+            
+            # Schedule phase transitions
+            total_time = 0
+            # After baseline: indicator lights on top, trigger sent, start data capture
+            QTimer.singleShot(int(baseline_duration * 1000) + 100, 
+                             lambda: self._validation_transition_phase('top_target', target_duration))
+            total_time += baseline_duration * 1000 + 100
+            
+            # After top target: indicator moves to bottom, trigger sent, 1s transition
+            QTimer.singleShot(int(total_time + target_duration * 1000) + 100,
+                             lambda: self._validation_transition_phase('transition', transition_duration))
+            total_time += target_duration * 1000 + 100
+            
+            # After transition: indicator stays on bottom, start data capture
+            QTimer.singleShot(int(total_time + transition_duration * 1000) + 100,
+                             lambda: self._validation_transition_phase('bottom_target', target_duration))
+            total_time += transition_duration * 1000 + 100
+            
+            # Stop after all phases complete
+            QTimer.singleShot(int(total_time + target_duration * 1000) + 200, self._stop_validation)
+            
+        except Exception as e:
+            print(f"[VALIDATION] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.validate_btn.setEnabled(True)
+            self.status_label.setText("Validation error - see console")
+            QMessageBox.warning(self, "Validation Error", f"Error during validation: {e}")
+    
+    def _validation_transition_phase(self, new_phase: str, duration: float) -> None:
+        """Transition to a new validation phase."""
+        try:
+            if getattr(self, '_validation_stopped', False):
+                return
+            
+            elapsed = time.perf_counter() - self._validation_start_time
+            old_phase = self._validation_current_phase
+            
+            # Record phase transition
+            self._validation_phase_markers.append({
+                'phase': old_phase,
+                'end_time': elapsed,
+                'duration': elapsed - self._validation_phase_start_time
+            })
+            
+            self._validation_current_phase = new_phase
+            self._validation_phase_start_time = time.perf_counter()
+            
+            # Handle phase-specific setup
+            if new_phase == 'top_target':
+                # Compute baseline mean
+                if self._validation_baseline_data:
+                    baseline_array = np.vstack(self._validation_baseline_data)
+                    self._validation_baseline_mean = np.mean(baseline_array, axis=0)
+                    print(f"[VALIDATION] Baseline: {len(baseline_array)} samples")
+                
+                # Indicator lights on TOP target (send trigger)
+                self.top_indicator.set_active(True)
+                self.bottom_indicator.set_active(False)
+                if self.marker_sender:
+                    self.marker_sender.send("Validation:TopTarget:Start")
+                self.status_label.setText(f"👆 Look at TOP target ({duration}s)")
+                print(f"[VALIDATION] Top target phase: Indicator ON, trigger sent, data capture starting")
+                
+            elif new_phase == 'transition':
+                # Indicator moves to BOTTOM target (send trigger)
+                self.top_indicator.set_active(False)
+                self.bottom_indicator.set_active(True)
+                if self.marker_sender:
+                    self.marker_sender.send("Validation:TopTarget:End")
+                    self.marker_sender.send("Validation:BottomTarget:Transition")
+                self.status_label.setText(f"Indicator moved to BOTTOM ({duration}s)... Get ready")
+                print(f"[VALIDATION] Transition: Indicator moved to bottom, trigger sent")
+                
+            elif new_phase == 'bottom_target':
+                # Indicator stays on bottom, start data capture
+                self.top_indicator.set_active(False)
+                self.bottom_indicator.set_active(True)
+                if self.marker_sender:
+                    self.marker_sender.send("Validation:BottomTarget:Start")
+                self.status_label.setText(f"👇 Look at BOTTOM target ({duration}s)")
+                print(f"[VALIDATION] Bottom target phase: Indicator ON, trigger sent, data capture starting")
+            
+            QApplication.processEvents()
+            
+        except Exception as e:
+            print(f"[VALIDATION] Error transitioning phase: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _start_flicker_phase(self) -> None:
+        """Start the flicker phase after baseline collection."""
+        try:
+            if getattr(self, '_validation_stopped', False):
+                return
+            
+            # Compute baseline mean for each channel
+            if self._validation_baseline_data:
+                baseline_array = np.vstack(self._validation_baseline_data)
+                self._validation_baseline_mean = np.mean(baseline_array, axis=0)
+                print(f"[VALIDATION] Baseline collected: {len(baseline_array)} samples, mean per channel: {self._validation_baseline_mean}")
+            else:
+                print("[VALIDATION] Warning: No baseline data collected!")
+                self._validation_baseline_mean = None
+            
+            # Get target frequencies from screen calibration
+            try:
+                from .screen_config import get_screen_calibration
+                screen_cal = get_screen_calibration()
+                higher_freq, lower_freq = screen_cal.frequencies
+                print(f"[VALIDATION] Target frequencies: Top={higher_freq:.2f} Hz, Bottom={lower_freq:.2f} Hz")
+            except:
+                higher_freq, lower_freq = 15.0, 12.0
+                print(f"[VALIDATION] Using default frequencies: Top={higher_freq:.2f} Hz, Bottom={lower_freq:.2f} Hz")
+            
+            # Reset flicker rate tracking
+            self.top_target._paint_intervals.clear()
+            self.bottom_target._paint_intervals.clear()
+            self.top_target._paint_count = 0
+            self.bottom_target._paint_count = 0
+            
+            # Start flickering
+            self._validation_phase = 'flicker'
+            self._validation_flicker_start_time = time.perf_counter()
+            self.top_target.set_active(True)
+            self.bottom_target.set_active(True)
+            self.status_label.setText(f"Flickering active ({self._validation_flicker_duration}s)... Look at targets!")
+            QApplication.processEvents()
+            
+            print(f"[VALIDATION] Flicker phase started - monitoring flicker rates...")
+            
+        except Exception as e:
+            print(f"[VALIDATION] Error starting flicker phase: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _collect_validation_sample(self) -> None:
+        """Collect a single sample during validation (called by timer)."""
+        try:
+            if getattr(self, '_validation_stopped', False):
+                return
+            
+            elapsed = time.perf_counter() - self._validation_start_time
+            phase = getattr(self, '_validation_current_phase', 'baseline')
+            phase_elapsed = elapsed - self._validation_phase_start_time
+            
+            # Pull and process using EXACT same method as main experiment
+            if self._use_lsl and self._lsl_connected:
+                n_samples_per_update = int(0.050 * self.preprocessor.sample_rate)  # 50ms worth
+                
+                # Get raw data from buffer
+                raw_buffer = self.preprocessor._lsl_receiver.get_recent_data(0.1)
+                if len(raw_buffer) > 0 and raw_buffer.shape[1] >= 8:
+                    chunk = raw_buffer[-n_samples_per_update:] if len(raw_buffer) >= n_samples_per_update else raw_buffer
+                    
+                    if phase == 'baseline':
+                        # Collect baseline data (flickering active, no indicators)
+                        self._validation_baseline_data.append(chunk.copy())
+                    elif phase == 'top_target':
+                        # Collect data while looking at top target (indicator on top)
+                        self._validation_top_target_data['raw'].append(chunk.copy())
+                        # Process data
+                        processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update)
+                        if len(processed) > 0:
+                            self._validation_top_target_data['processed'].append(processed.copy())
+                            self._validation_top_target_data['timestamps'].append(phase_elapsed)
+                    elif phase == 'bottom_target':
+                        # Collect data while looking at bottom target (indicator on bottom)
+                        self._validation_bottom_target_data['raw'].append(chunk.copy())
+                        # Process data
+                        processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update)
+                        if len(processed) > 0:
+                            self._validation_bottom_target_data['processed'].append(processed.copy())
+                            self._validation_bottom_target_data['timestamps'].append(phase_elapsed)
+                    # Transition phase: don't collect data (just indicator movement)
+        except Exception as e:
+            print(f"[VALIDATION] Error collecting sample: {e}")
+    
+    def _stop_validation(self) -> None:
+        """Stop validation and process data."""
+        try:
+            if getattr(self, '_validation_stopped', False):
+                return
+            
+            self._validation_stopped = True
+            
+            if hasattr(self, '_validation_timer'):
+                self._validation_timer.stop()
+            
+            # Stop flickering and indicators
+            self.top_target.set_active(False)
+            self.bottom_target.set_active(False)
+            self.top_indicator.set_active(False)
+            self.bottom_indicator.set_active(False)
+            
+            # Send end marker
+            if self.marker_sender:
+                if self._validation_current_phase == 'bottom_target':
+                    self.marker_sender.send("Validation:BottomTarget:End")
+                self.marker_sender.send("Validation:Complete")
+            
+            # Process validation data
+            self._process_validation_data()
+            
+        except Exception as e:
+            print(f"[VALIDATION] Error stopping: {e}")
+            import traceback
+            traceback.print_exc()
+            self.validate_btn.setEnabled(True)
+            self.status_label.setText("Validation error - see console")
+            
+        except Exception as e:
+            print(f"[VALIDATION] Error stopping: {e}")
+            import traceback
+            traceback.print_exc()
+            self.validate_btn.setEnabled(True)
+            self.status_label.setText("Validation error - see console")
+    
+    def _process_validation_data(self) -> None:
+        """Process validation data: create templates, classify chunks, compare ground truth."""
+        try:
+            from datetime import datetime
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            self.status_label.setText("Processing validation data...")
+            QApplication.processEvents()
+            
+            sample_rate = self.preprocessor.sample_rate
+            
+            # Concatenate data from each phase
+            top_processed = np.vstack(self._validation_top_target_data['processed']) if self._validation_top_target_data['processed'] else None
+            bottom_processed = np.vstack(self._validation_bottom_target_data['processed']) if self._validation_bottom_target_data['processed'] else None
+            
+            if top_processed is None or bottom_processed is None:
+                QMessageBox.warning(self, "No Data", "Insufficient data collected!")
+                self.validate_btn.setEnabled(True)
+                return
+            
+            # Create templates using same method as calibration: epoch averaging
+            # Calibration: skip 0.5s, extract multiple epochs of 0.5s each, average them
+            window_seconds_template = 0.5  # Match calibration default
+            window_samples_template = int(window_seconds_template * sample_rate)
+            skip_samples = int(0.5 * sample_rate)  # Skip 0.5s to allow SSVEP to stabilize (match calibration)
+            
+            top_template = None
+            bottom_template = None
+            
+            # Top template: extract multiple epochs and average (matching calibration method)
+            if len(top_processed) > skip_samples + window_samples_template:
+                all_epochs_top = []
+                # Extract multiple epochs starting after skip period
+                n_epochs = (len(top_processed) - skip_samples) // window_samples_template
+                for i in range(n_epochs):
+                    epoch_start = skip_samples + i * window_samples_template
+                    epoch_end = epoch_start + window_samples_template
+                    if epoch_end <= len(top_processed):
+                        epoch = top_processed[epoch_start:epoch_end]
+                        all_epochs_top.append(epoch)
+                
+                if all_epochs_top:
+                    # Average all epochs (matching calibration method)
+                    top_template = np.mean(all_epochs_top, axis=0)
+                    # Normalize (matching calibration method)
+                    top_template = top_template - np.mean(top_template, axis=0)
+                    std = np.std(top_template, axis=0)
+                    std[std < 1e-6] = 1
+                    top_template = top_template / std
+                    print(f"[VALIDATION] Created top template: {len(all_epochs_top)} epochs averaged, {len(top_template)} samples per epoch")
+            
+            # Bottom template: extract multiple epochs and average (matching calibration method)
+            if len(bottom_processed) > skip_samples + window_samples_template:
+                all_epochs_bottom = []
+                # Extract multiple epochs starting after skip period
+                n_epochs = (len(bottom_processed) - skip_samples) // window_samples_template
+                for i in range(n_epochs):
+                    epoch_start = skip_samples + i * window_samples_template
+                    epoch_end = epoch_start + window_samples_template
+                    if epoch_end <= len(bottom_processed):
+                        epoch = bottom_processed[epoch_start:epoch_end]
+                        all_epochs_bottom.append(epoch)
+                
+                if all_epochs_bottom:
+                    # Average all epochs (matching calibration method)
+                    bottom_template = np.mean(all_epochs_bottom, axis=0)
+                    # Normalize (matching calibration method)
+                    bottom_template = bottom_template - np.mean(bottom_template, axis=0)
+                    std = np.std(bottom_template, axis=0)
+                    std[std < 1e-6] = 1
+                    bottom_template = bottom_template / std
+                    print(f"[VALIDATION] Created bottom template: {len(all_epochs_bottom)} epochs averaged, {len(bottom_template)} samples per epoch")
+            
+            # Parse remaining data (after template extraction) into chunks matching main experiment EXACTLY
+            # Main composition uses: get_recent_data(0.3) called every 50ms
+            # So we need: 0.3s window, stepping by 50ms (0.05s)
+            window_seconds = 0.3  # Match main composition (not classifier.window_seconds which is 0.5s)
+            update_interval_seconds = 0.050  # 50ms - matches composition timer interval
+            
+            chunk_window_samples = int(window_seconds * sample_rate)
+            step_samples = int(update_interval_seconds * sample_rate)
+            
+            # Set up debug logging to file BEFORE chunking
+            import logging
+            from datetime import datetime
+            log_file = Path("validation_plots") / f"validation_debug_{timestamp_str}.log"
+            log_file.parent.mkdir(exist_ok=True)
+            
+            # Create logger
+            val_logger = logging.getLogger('validation_debug')
+            val_logger.setLevel(logging.DEBUG)
+            val_logger.handlers.clear()
+            
+            fh = logging.FileHandler(log_file, mode='w')
+            fh.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            fh.setFormatter(formatter)
+            val_logger.addHandler(fh)
+            
+            # Calculate expected number of chunks
+            target_duration = 10.0  # seconds per target
+            classification_start = 2.0  # seconds (after template extraction)
+            available_data_duration = target_duration - classification_start  # 8 seconds
+            expected_chunks = int((available_data_duration - window_seconds) / update_interval_seconds) + 1
+            
+            val_logger.info("=" * 60)
+            val_logger.info("VALIDATION CHUNKING ANALYSIS")
+            val_logger.info("=" * 60)
+            val_logger.info(f"Target duration: {target_duration}s")
+            val_logger.info(f"Classification starts at: {classification_start}s (after template extraction)")
+            val_logger.info(f"Available data duration: {available_data_duration}s")
+            val_logger.info(f"Window size: {window_seconds}s ({chunk_window_samples} samples)")
+            val_logger.info(f"Step size: {update_interval_seconds}s ({step_samples} samples)")
+            val_logger.info(f"Expected chunks per target: {expected_chunks}")
+            val_logger.info(f"Top processed data length: {len(top_processed)} samples ({len(top_processed)/sample_rate:.2f}s)")
+            val_logger.info(f"Bottom processed data length: {len(bottom_processed)} samples ({len(bottom_processed)/sample_rate:.2f}s)")
+            
+            # Start classification after template extraction period
+            # Templates use epochs from 0.5s onwards, so classify from 2s onwards to exclude template data
+            classification_start_samples = int(2.0 * sample_rate)
+            
+            val_logger.info(f"Classification start: {classification_start_samples} samples ({classification_start}s)")
+            val_logger.info(f"Top remaining after {classification_start}s: {len(top_processed) - classification_start_samples} samples "
+                          f"({(len(top_processed) - classification_start_samples)/sample_rate:.2f}s)")
+            val_logger.info(f"Bottom remaining after {classification_start}s: {len(bottom_processed) - classification_start_samples} samples "
+                          f"({(len(bottom_processed) - classification_start_samples)/sample_rate:.2f}s)")
+            
+            # Top target: classify chunks from 2s onwards
+            top_chunks = []
+            top_ground_truth = AttentionTarget.UP
+            if len(top_processed) > classification_start_samples + chunk_window_samples:
+                remaining_top = top_processed[classification_start_samples:]
+                # Step by 50ms to match main composition update rate
+                for i in range(0, len(remaining_top) - chunk_window_samples + 1, step_samples):
+                    chunk = remaining_top[i:i+chunk_window_samples]
+                    if len(chunk) == chunk_window_samples:
+                        top_chunks.append(chunk)
+            
+            # Bottom target: classify chunks from 2s onwards
+            bottom_chunks = []
+            bottom_ground_truth = AttentionTarget.DOWN
+            if len(bottom_processed) > classification_start_samples + chunk_window_samples:
+                remaining_bottom = bottom_processed[classification_start_samples:]
+                # Step by 50ms to match main composition update rate
+                for i in range(0, len(remaining_bottom) - chunk_window_samples + 1, step_samples):
+                    chunk = remaining_bottom[i:i+chunk_window_samples]
+                    if len(chunk) == chunk_window_samples:
+                        bottom_chunks.append(chunk)
+            
+            val_logger.info(f"Actual top chunks created: {len(top_chunks)}")
+            val_logger.info(f"Actual bottom chunks created: {len(bottom_chunks)}")
+            val_logger.info("=" * 60)
+            
+            print(f"[VALIDATION] Created {len(top_chunks)} top chunks, {len(bottom_chunks)} bottom chunks")
+            print(f"[VALIDATION] Expected: ~{expected_chunks} chunks per target (8s data / 0.05s step)")
+            print(f"[VALIDATION] Chunk parameters: window={window_seconds}s, step={update_interval_seconds}s ({step_samples} samples)")
+            print(f"[VALIDATION] This matches main composition: get_recent_data({window_seconds}) called every {update_interval_seconds*1000:.0f}ms")
+            print(f"[VALIDATION] Debug log: {log_file}")
+            
+            # Run classifier on chunks - use same method as main composition
+            top_predictions = []
+            bottom_predictions = []
+            
+            val_logger.info(f"Classifying {len(top_chunks)} top chunks...")
+            for i, chunk in enumerate(top_chunks):
+                result = self.classifier.classify(chunk, method="cca")  # Match main composition
+                top_predictions.append({
+                    'prediction': result.target.value,
+                    'confidence': result.confidence,
+                    'raw_score': result.raw_score,
+                    'corr_up': result.power_higher_freq,
+                    'corr_down': result.power_lower_freq
+                })
+                if i < 5 or i % 20 == 0:  # Log first 5 and every 20th
+                    val_logger.debug(f"Top chunk {i+1}/{len(top_chunks)}: corr_up={result.power_higher_freq:.6f}, "
+                                   f"corr_down={result.power_lower_freq:.6f}, pred={result.target.value}, "
+                                   f"confidence={result.confidence:.3f}")
+            
+            val_logger.info(f"Classifying {len(bottom_chunks)} bottom chunks...")
+            for i, chunk in enumerate(bottom_chunks):
+                result = self.classifier.classify(chunk, method="cca")  # Match main composition
+                bottom_predictions.append({
+                    'prediction': result.target.value,
+                    'confidence': result.confidence,
+                    'raw_score': result.raw_score,
+                    'corr_up': result.power_higher_freq,
+                    'corr_down': result.power_lower_freq
+                })
+                if i < 5 or i % 20 == 0:  # Log first 5 and every 20th
+                    val_logger.debug(f"Bottom chunk {i+1}/{len(bottom_chunks)}: corr_up={result.power_higher_freq:.6f}, "
+                                   f"corr_down={result.power_lower_freq:.6f}, pred={result.target.value}, "
+                                   f"confidence={result.confidence:.3f}")
+            
+            val_logger.info("=" * 60)
+            val_logger.info("VALIDATION SUMMARY")
+            val_logger.info("=" * 60)
+            val_logger.info(f"Top target: {len(top_predictions)} predictions, {top_correct} correct, accuracy={top_accuracy*100:.1f}%")
+            val_logger.info(f"Bottom target: {len(bottom_predictions)} predictions, {bottom_correct} correct, accuracy={bottom_accuracy*100:.1f}%")
+            val_logger.info(f"Overall: {len(top_predictions) + len(bottom_predictions)} total predictions, "
+                          f"{top_correct + bottom_correct} correct, accuracy={overall_accuracy*100:.1f}%")
+            
+            print(f"[VALIDATION] Debug log saved to {log_file}")
+            
+            # Compare against ground truth
+            top_correct = sum(1 for p in top_predictions if p['prediction'] == top_ground_truth.value)
+            top_accuracy = top_correct / len(top_predictions) if top_predictions else 0.0
+            top_mean_confidence = np.mean([p['confidence'] for p in top_predictions]) if top_predictions else 0.0
+            
+            bottom_correct = sum(1 for p in bottom_predictions if p['prediction'] == bottom_ground_truth.value)
+            bottom_accuracy = bottom_correct / len(bottom_predictions) if bottom_predictions else 0.0
+            bottom_mean_confidence = np.mean([p['confidence'] for p in bottom_predictions]) if bottom_predictions else 0.0
+            
+            overall_accuracy = (top_correct + bottom_correct) / (len(top_predictions) + len(bottom_predictions)) if (top_predictions or bottom_predictions) else 0.0
+            
+            print(f"[VALIDATION] Top target accuracy: {top_accuracy*100:.1f}% ({top_correct}/{len(top_predictions)})")
+            print(f"[VALIDATION] Bottom target accuracy: {bottom_accuracy*100:.1f}% ({bottom_correct}/{len(bottom_predictions)})")
+            print(f"[VALIDATION] Overall accuracy: {overall_accuracy*100:.1f}%")
+            
+            # Generate comprehensive report
+            self._generate_validation_report(
+                top_processed, bottom_processed,
+                top_template, bottom_template,
+                top_predictions, bottom_predictions,
+                top_ground_truth, bottom_ground_truth,
+                top_accuracy, bottom_accuracy, overall_accuracy,
+                top_mean_confidence, bottom_mean_confidence,
+                timestamp_str=timestamp_str
+            )
+            
+        except Exception as e:
+            print(f"[VALIDATION] Error processing data: {e}")
+            import traceback
+            traceback.print_exc()
+            self.validate_btn.setEnabled(True)
+            self.status_label.setText("Validation error - see console")
+            QMessageBox.warning(self, "Validation Error", f"Error processing validation data: {e}")
+    
+    def _generate_validation_report(self, top_processed, bottom_processed, top_template, bottom_template,
+                                    top_predictions, bottom_predictions, top_ground_truth, bottom_ground_truth,
+                                    top_accuracy, bottom_accuracy, overall_accuracy,
+                                    top_mean_confidence, bottom_mean_confidence, timestamp_str: Optional[str] = None) -> None:
+        """Generate comprehensive validation report with plots and JSON."""
+        try:
+            if timestamp_str is None:
+                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            validation_dir = Path("validation_plots")
+            validation_dir.mkdir(exist_ok=True)
+            
+            # Save data files
+            np.save(validation_dir / f"top_processed_{timestamp_str}.npy", top_processed)
+            np.save(validation_dir / f"bottom_processed_{timestamp_str}.npy", bottom_processed)
+            if top_template is not None:
+                np.save(validation_dir / f"top_template_{timestamp_str}.npy", top_template)
+            if bottom_template is not None:
+                np.save(validation_dir / f"bottom_template_{timestamp_str}.npy", bottom_template)
+            
+            # Create comprehensive report
+            report = {
+                'timestamp': timestamp_str,
+                'sample_rate': float(self.preprocessor.sample_rate),
+                'window_seconds': 0.3,  # Matches main composition (not classifier.window_seconds)
+                'update_interval_seconds': 0.050,  # 50ms - matches composition timer
+                'target_frequencies': {
+                    'top': float(self.top_target.frequency),
+                    'bottom': float(self.bottom_target.frequency)
+                },
+                'top_target': {
+                    'ground_truth': top_ground_truth.value,
+                    'n_chunks': len(top_predictions),
+                    'n_correct': sum(1 for p in top_predictions if p['prediction'] == top_ground_truth.value),
+                    'accuracy': float(top_accuracy),
+                    'mean_confidence': float(top_mean_confidence),
+                    'mean_corr_up': float(np.mean([p.get('corr_up', 0) for p in top_predictions])),
+                    'mean_corr_down': float(np.mean([p.get('corr_down', 0) for p in top_predictions])),
+                    'predictions': top_predictions
+                },
+                'bottom_target': {
+                    'ground_truth': bottom_ground_truth.value,
+                    'n_chunks': len(bottom_predictions),
+                    'n_correct': sum(1 for p in bottom_predictions if p['prediction'] == bottom_ground_truth.value),
+                    'accuracy': float(bottom_accuracy),
+                    'mean_confidence': float(bottom_mean_confidence),
+                    'mean_corr_up': float(np.mean([p.get('corr_up', 0) for p in bottom_predictions])),
+                    'mean_corr_down': float(np.mean([p.get('corr_down', 0) for p in bottom_predictions])),
+                    'predictions': bottom_predictions
+                },
+                'overall': {
+                    'accuracy': float(overall_accuracy),
+                    'total_chunks': len(top_predictions) + len(bottom_predictions),
+                    'total_correct': sum(1 for p in top_predictions if p['prediction'] == top_ground_truth.value) + 
+                                   sum(1 for p in bottom_predictions if p['prediction'] == bottom_ground_truth.value)
+                },
+                'phase_markers': getattr(self, '_validation_phase_markers', [])
+            }
+            
+            # Save report
+            import json
+            report_file = validation_dir / f"validation_report_{timestamp_str}.json"
+            with open(report_file, 'w') as f:
+                json.dump(report, f, indent=2)
+            print(f"[VALIDATION] Report saved to {report_file}")
+            
+            # Prepare data for plotting
+            baseline_mean = getattr(self, '_validation_baseline_mean', None)
+            baseline_raw = np.vstack(self._validation_baseline_data) if self._validation_baseline_data else None
+            top_raw = np.vstack(self._validation_top_target_data['raw']) if self._validation_top_target_data['raw'] else None
+            bottom_raw = np.vstack(self._validation_bottom_target_data['raw']) if self._validation_bottom_target_data['raw'] else None
+            
+            # Generate three plots: grand plot (all data), top target plot, bottom target plot
+            plot_paths = self._plot_validation_data(
+                baseline_raw=baseline_raw,
+                top_raw=top_raw,
+                bottom_raw=bottom_raw,
+                top_processed=top_processed,
+                bottom_processed=bottom_processed,
+                baseline_mean=baseline_mean,
+                timestamp_str=timestamp_str
+            )
+            
+            # Show summary
+            plot_paths_str = "\n".join([f"{key.capitalize()}: {path}" for key, path in plot_paths.items()])
+            summary = (
+                f"Validation Complete!\n\n"
+                f"Top Target Accuracy: {top_accuracy*100:.1f}% ({report['top_target']['n_correct']}/{report['top_target']['n_chunks']})\n"
+                f"Bottom Target Accuracy: {bottom_accuracy*100:.1f}% ({report['bottom_target']['n_correct']}/{report['bottom_target']['n_chunks']})\n"
+                f"Overall Accuracy: {overall_accuracy*100:.1f}%\n\n"
+                f"Report saved to:\n{report_file}\n\n"
+                f"Plots saved to:\n{plot_paths_str}"
+            )
+            
+            QMessageBox.information(self, "Validation Complete", summary)
+            self.status_label.setText(f"Validation complete! Accuracy: {overall_accuracy*100:.1f}%")
+            self.validate_btn.setEnabled(True)
+            
+        except Exception as e:
+            print(f"[VALIDATION] Error generating report: {e}")
+            import traceback
+            traceback.print_exc()
+            self.validate_btn.setEnabled(True)
+            self.status_label.setText("Validation error - see console")
+    
+    def _finish_data_validation(self, raw_data_list: List, processed_data_list: List, timestamps: List, flicker_stats: dict = None) -> None:
+        """Finish validation and generate plots (legacy method - kept for compatibility)."""
+        # This method is now deprecated - _process_validation_data handles everything
+        pass
+    
+    def _plot_validation_data(self, baseline_raw: Optional[np.ndarray], top_raw: Optional[np.ndarray], 
+                              bottom_raw: Optional[np.ndarray], top_processed: Optional[np.ndarray],
+                              bottom_processed: Optional[np.ndarray], baseline_mean: Optional[np.ndarray] = None,
+                              timestamp_str: Optional[str] = None) -> dict:
+        """Generate diagnostic plots for validation data: grand plot (all data) + top/bottom epoched plots."""
+        from .lsl_stream import UNICORN_EEG_CHANNELS, OCCIPITAL_INDICES
+        
+        # Create output directory
+        output_dir = Path("validation_plots")
+        output_dir.mkdir(exist_ok=True)
+        
+        if timestamp_str is None:
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        plot_paths = {}
+        sample_rate = self.preprocessor.sample_rate
+        
+        # Get target frequencies
+        try:
+            from .screen_config import get_screen_calibration
+            screen_cal = get_screen_calibration()
+            higher_freq, lower_freq = screen_cal.frequencies
+        except:
+            higher_freq, lower_freq = 15.0, 12.0
+        
+        # Helper function to extract occipital channels and apply baseline removal
+        def prepare_raw_data(raw_data, baseline_mean):
+            if raw_data is None or len(raw_data) == 0:
+                return None, None
+            if raw_data.shape[1] >= 8:
+                occ_data = raw_data[:, OCCIPITAL_INDICES]
+                occ_names = [UNICORN_EEG_CHANNELS[i] for i in OCCIPITAL_INDICES]
+            else:
+                occ_data = raw_data
+                occ_names = [f"Ch{i}" for i in range(raw_data.shape[1])]
+            
+            # Apply baseline removal
+            occ_data_baseline_removed = occ_data.copy()
+            if baseline_mean is not None and len(baseline_mean) >= 8:
+                occ_baseline_means = baseline_mean[OCCIPITAL_INDICES]
+                for ch_idx in range(occ_data.shape[1]):
+                    occ_data_baseline_removed[:, ch_idx] = occ_data[:, ch_idx] - occ_baseline_means[ch_idx]
+            else:
+                for ch_idx in range(occ_data.shape[1]):
+                    occ_data_baseline_removed[:, ch_idx] = occ_data[:, ch_idx] - np.mean(occ_data[:, ch_idx])
+            
+            return occ_data_baseline_removed, occ_names
+        
+        # Helper function to plot raw EEG subplot
+        def plot_raw_eeg_subplot(ax, raw_data, time_axis, title, baseline_mean=None):
+            occ_data, occ_names = prepare_raw_data(raw_data, baseline_mean)
+            if occ_data is None:
+                return
+            
+            data_range = np.ptp(occ_data, axis=0)
+            max_range = np.max(data_range)
+            offset_spacing = max(max_range * 1.5, 100)
+            
+            for ch_idx, ch_name in enumerate(occ_names):
+                offset = ch_idx * offset_spacing
+                ax.plot(time_axis, occ_data[:, ch_idx] + offset, 
+                       label=ch_name, linewidth=0.8, alpha=0.8)
+            
+            y_min = np.min(occ_data) - offset_spacing * 0.2
+            y_max = np.max(occ_data) + offset_spacing * (len(occ_names) - 1) + offset_spacing * 0.2
+            ax.set_ylim(y_min, y_max)
+            ax.set_xlabel("Time (seconds)", fontsize=11)
+            ax.set_ylabel("Raw EEG (µV, baseline removed)", fontsize=11)
+            ax.set_title(title, fontsize=13, fontweight='bold')
+            ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+            ax.grid(True, alpha=0.3, linestyle='--')
+        
+        # Helper function to plot processed EEG subplot
+        def plot_processed_eeg_subplot(ax, processed_data, time_axis, title):
+            if processed_data is None or len(processed_data) == 0:
+                return
+            
+            if processed_data.shape[1] == 3:
+                ch_names = ['PO7', 'Oz', 'PO8']
+            else:
+                ch_names = [f"Ch{i}" for i in range(processed_data.shape[1])]
+            
+            data_range = np.ptp(processed_data, axis=0)
+            max_range = np.max(data_range)
+            offset_spacing = max(max_range * 1.5, 2.0)
+            
+            for ch_idx, ch_name in enumerate(ch_names):
+                offset = ch_idx * offset_spacing
+                ax.plot(time_axis, processed_data[:, ch_idx] + offset, 
+                       label=ch_name, linewidth=0.8, alpha=0.8)
+            
+            y_min = np.min(processed_data) - offset_spacing * 0.2
+            y_max = np.max(processed_data) + offset_spacing * (len(ch_names) - 1) + offset_spacing * 0.2
+            ax.set_ylim(y_min, y_max)
+            ax.set_xlabel("Time (seconds)", fontsize=11)
+            ax.set_ylabel("Processed EEG (normalized)", fontsize=11)
+            ax.set_title(title, fontsize=13, fontweight='bold')
+            ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+            ax.grid(True, alpha=0.3, linestyle='--')
+        
+        # Helper function to plot power spectrum subplot
+        def plot_power_spectrum_subplot(ax, processed_data, title, target_freq):
+            if processed_data is None or len(processed_data) == 0:
+                return
+            
+            if processed_data.shape[1] > 1:
+                avg_signal = np.mean(processed_data, axis=1)
+            else:
+                avg_signal = processed_data[:, 0]
+            
+            n_samples = len(avg_signal)
+            freqs = np.fft.rfftfreq(n_samples, 1/sample_rate)
+            fft_vals = np.abs(np.fft.rfft(avg_signal))
+            power = fft_vals ** 2
+            power_log = np.log10(power + 1e-10)
+            
+            mask = (freqs >= 5) & (freqs <= 25)
+            ax.plot(freqs[mask], power_log[mask], linewidth=1.5, color='#1f77b4', label='Power Spectrum')
+            
+            # Mark target frequencies
+            ax.axvline(higher_freq, color='r', linestyle='--', linewidth=2, alpha=0.7, 
+                      label=f'Target: {higher_freq:.2f} Hz')
+            ax.axvline(lower_freq, color='b', linestyle='--', linewidth=2, alpha=0.7, 
+                      label=f'Target: {lower_freq:.2f} Hz')
+            
+            ax.axvspan(higher_freq - 0.5, higher_freq + 0.5, alpha=0.1, color='red', label='_nolegend_')
+            ax.axvspan(lower_freq - 0.5, lower_freq + 0.5, alpha=0.1, color='blue', label='_nolegend_')
+            
+            ax.set_xlabel("Frequency (Hz)", fontsize=11)
+            ax.set_ylabel("Log Power (log₁₀)", fontsize=11)
+            ax.set_title(title, fontsize=13, fontweight='bold')
+            ax.set_xlim(5, 25)
+            ax.legend(loc='upper right', fontsize=9, framealpha=0.9)
+            ax.grid(True, alpha=0.3, linestyle='--')
+        
+        # ===== PLOT 1: Grand Plot (All Data) =====
+        # Combine all raw data: baseline + top + bottom
+        all_raw_parts = []
+        if baseline_raw is not None and len(baseline_raw) > 0:
+            all_raw_parts.append(baseline_raw)
+        if top_raw is not None and len(top_raw) > 0:
+            all_raw_parts.append(top_raw)
+        if bottom_raw is not None and len(bottom_raw) > 0:
+            all_raw_parts.append(bottom_raw)
+        
+        all_raw = np.vstack(all_raw_parts) if all_raw_parts else None
+        all_processed = None
+        if top_processed is not None and bottom_processed is not None:
+            all_processed = np.vstack([top_processed, bottom_processed])
+        elif top_processed is not None:
+            all_processed = top_processed
+        elif bottom_processed is not None:
+            all_processed = bottom_processed
+        
+        if all_raw is not None or all_processed is not None:
+            n_plots = 0
+            if all_raw is not None:
+                n_plots += 1
+            if all_processed is not None:
+                n_plots += 2  # Processed + Power spectrum
+            
+            fig, axes = plt.subplots(n_plots, 1, figsize=(14, 5*n_plots))
+            if n_plots == 1:
+                axes = [axes]
+            
+            plot_idx = 0
+            
+            if all_raw is not None:
+                all_time_axis = np.arange(len(all_raw)) / sample_rate
+                plot_raw_eeg_subplot(axes[plot_idx], all_raw, all_time_axis, 
+                                    "Raw EEG Data - All Phases (Baseline + Top + Bottom)", baseline_mean)
+                plot_idx += 1
+            
+            if all_processed is not None:
+                all_proc_time_axis = np.arange(len(all_processed)) / sample_rate
+                plot_processed_eeg_subplot(axes[plot_idx], all_processed, all_proc_time_axis,
+                                         "Processed EEG Data - All Phases (After CAR + Filtering)")
+                plot_idx += 1
+                plot_power_spectrum_subplot(axes[plot_idx], all_processed,
+                                           "Power Spectrum - All Phases (Averaged Occipital Channels)", None)
+            
+            plt.tight_layout()
+            grand_plot_path = output_dir / f"data_validation_grand_{timestamp_str}.png"
+            plt.savefig(grand_plot_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            plot_paths['grand'] = grand_plot_path
+            print(f"[VALIDATION] Grand plot saved to {grand_plot_path}")
+        
+        # ===== PLOT 2: Top Target Plot =====
+        if top_raw is not None or top_processed is not None:
+            n_plots = 0
+            if top_raw is not None:
+                n_plots += 1
+            if top_processed is not None:
+                n_plots += 2
+            
+            fig, axes = plt.subplots(n_plots, 1, figsize=(14, 5*n_plots))
+            if n_plots == 1:
+                axes = [axes]
+            
+            plot_idx = 0
+            
+            if top_raw is not None:
+                top_time_axis = np.arange(len(top_raw)) / sample_rate
+                plot_raw_eeg_subplot(axes[plot_idx], top_raw, top_time_axis,
+                                    "Raw EEG Data - Top Target Phase", baseline_mean)
+                plot_idx += 1
+            
+            if top_processed is not None:
+                top_proc_time_axis = np.arange(len(top_processed)) / sample_rate
+                plot_processed_eeg_subplot(axes[plot_idx], top_processed, top_proc_time_axis,
+                                         "Processed EEG Data - Top Target Phase")
+                plot_idx += 1
+                plot_power_spectrum_subplot(axes[plot_idx], top_processed,
+                                           f"Power Spectrum - Top Target Phase (Target: {higher_freq:.2f} Hz)", higher_freq)
+            
+            plt.tight_layout()
+            top_plot_path = output_dir / f"data_validation_top_{timestamp_str}.png"
+            plt.savefig(top_plot_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            plot_paths['top'] = top_plot_path
+            print(f"[VALIDATION] Top target plot saved to {top_plot_path}")
+        
+        # ===== PLOT 3: Bottom Target Plot =====
+        if bottom_raw is not None or bottom_processed is not None:
+            n_plots = 0
+            if bottom_raw is not None:
+                n_plots += 1
+            if bottom_processed is not None:
+                n_plots += 2
+            
+            fig, axes = plt.subplots(n_plots, 1, figsize=(14, 5*n_plots))
+            if n_plots == 1:
+                axes = [axes]
+            
+            plot_idx = 0
+            
+            if bottom_raw is not None:
+                bottom_time_axis = np.arange(len(bottom_raw)) / sample_rate
+                plot_raw_eeg_subplot(axes[plot_idx], bottom_raw, bottom_time_axis,
+                                    "Raw EEG Data - Bottom Target Phase", baseline_mean)
+                plot_idx += 1
+            
+            if bottom_processed is not None:
+                bottom_proc_time_axis = np.arange(len(bottom_processed)) / sample_rate
+                plot_processed_eeg_subplot(axes[plot_idx], bottom_processed, bottom_proc_time_axis,
+                                          "Processed EEG Data - Bottom Target Phase")
+                plot_idx += 1
+                plot_power_spectrum_subplot(axes[plot_idx], bottom_processed,
+                                           f"Power Spectrum - Bottom Target Phase (Target: {lower_freq:.2f} Hz)", lower_freq)
+            
+            plt.tight_layout()
+            bottom_plot_path = output_dir / f"data_validation_bottom_{timestamp_str}.png"
+            plt.savefig(bottom_plot_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            plot_paths['bottom'] = bottom_plot_path
+            print(f"[VALIDATION] Bottom target plot saved to {bottom_plot_path}")
+        
+        return plot_paths
 
 
 def run_bci_app():

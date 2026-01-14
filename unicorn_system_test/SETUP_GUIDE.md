@@ -62,6 +62,9 @@ This guide provides step-by-step instructions for setting up and testing the g.t
 - Apply conductive gel if required
 - Ensure good skin contact (impedance should be low)
 
+**Note on Reference/Ground Electrodes:**
+The Unicorn Black has built-in reference and ground electrodes integrated into the headset hardware (amplifier/electronics). These are separate from the 8 EEG channels and handle hardware-level referencing internally. All 8 EEG channels (Fz, C3, Cz, C4, Pz, PO7, Oz, PO8) are always included in the montage - none are excluded for referencing purposes. Optional mastoid sensors can be placed separately if preferred, but are not required.
+
 ## Environment Setup
 
 ### Option 1: Conda (Recommended)
