@@ -675,7 +675,7 @@ class BCICompositionWindow(QMainWindow):
         self.controller = BCICursorController(duration=10.0)
         
         # Flash onset tracking for epoching
-        self._flash_onsets: List[Tuple[str, float]] = []
+        self._flash_onsets: List[Tuple[str, str, float]] = []  # (position, color, timestamp)
         self._eeg_buffer: List[Tuple[NDArray, float]] = []  # (samples, timestamp)
         self._buffer_max_seconds: float = 2.0  # Keep 2 seconds of data for epoching
         
