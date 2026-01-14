@@ -1,22 +1,25 @@
 """
-P300 Stimulus module for BCI-UPIC.
+P300 Oddball Stimulus module for BCI-UPIC.
 
-Provides discrete flash stimuli for P300 ERP-based BCI paradigm.
-Two targets flash discretely with controlled timing for ERP extraction.
+Provides discrete flash stimuli for P300 ERP-based BCI oddball paradigm.
+Two targets flash discretely with color cycling - red is the oddball target.
 
-P300 paradigm:
+P300 Oddball paradigm:
 - Discrete flashes (100-200ms duration)
 - Inter-stimulus interval: 500-1000ms
-- ERP peaks around 300ms post-stimulus
+- Color cycling: Red (target/oddball), Blue, Green, Yellow, etc. (non-targets)
+- Red never appears on both top and bottom simultaneously
+- ERP peaks around 300ms post-stimulus for attended (red) targets
 - Epoching: -100ms to +800ms relative to stimulus onset
 """
 
 from __future__ import annotations
 
 import time
+import random
 import numpy as np
 from dataclasses import dataclass, field
-from typing import Tuple, Optional, Callable, List
+from typing import Tuple, Optional, Callable, List, Dict
 from enum import Enum
 
 
@@ -27,23 +30,39 @@ class FlashState(Enum):
     POST_FLASH = 2  # Just finished flash, in post-flash period
 
 
+# Color definitions for P300 oddball paradigm
+COLORS = {
+    'red': (255, 0, 0),        # Target/oddball - attended
+    'blue': (0, 0, 255),       # Non-target
+    'green': (0, 255, 0),      # Non-target
+    'yellow': (255, 255, 0),  # Non-target
+    'cyan': (0, 255, 255),    # Non-target
+    'magenta': (255, 0, 255), # Non-target
+    'orange': (255, 165, 0),  # Non-target
+    'purple': (128, 0, 128),  # Non-target
+}
+
+NON_TARGET_COLORS = ['blue', 'green', 'yellow', 'cyan', 'magenta', 'orange', 'purple']
+TARGET_COLOR = 'red'
+
+
 @dataclass
 class P300FlashTarget:
     """
-    A single P300 flash target.
+    A single P300 flash target with color cycling.
     
     Attributes:
         position: Screen position ('top' or 'bottom')
         flash_duration_ms: Duration of each flash in milliseconds (default 150ms)
         isi_ms: Inter-stimulus interval in milliseconds (default 750ms)
-        color_on: RGB color when flashing
+        current_color: Current color name (for this flash)
         color_off: RGB color when idle
         size: Size of the target (width, height) in pixels
     """
     position: str = "top"
     flash_duration_ms: int = 150  # 150ms flash duration
     isi_ms: int = 750  # 750ms inter-stimulus interval (total cycle = 900ms)
-    color_on: Tuple[int, int, int] = (255, 255, 255)  # White flash
+    current_color: str = "blue"  # Current color name
     color_off: Tuple[int, int, int] = (30, 30, 30)    # Dark gray idle
     size: Tuple[int, int] = (100, 100)
     
@@ -99,7 +118,17 @@ class P300FlashTarget:
     def get_color(self, current_time: Optional[float] = None) -> Tuple[int, int, int]:
         """Get current color based on flash state."""
         state = self.get_state(current_time)
-        return self.color_on if state == FlashState.FLASHING else self.color_off
+        if state == FlashState.FLASHING:
+            return COLORS.get(self.current_color, COLORS['blue'])
+        return self.color_off
+    
+    def set_color(self, color_name: str) -> None:
+        """Set the color for the next flash."""
+        self.current_color = color_name
+    
+    def is_target(self) -> bool:
+        """Check if current color is the target (red)."""
+        return self.current_color == TARGET_COLOR
     
     def is_flashing(self, current_time: Optional[float] = None) -> bool:
         """Check if target is currently flashing."""
@@ -114,24 +143,26 @@ class P300FlashTarget:
 @dataclass
 class P300Stimulus:
     """
-    Complete P300 stimulus system with two flash targets.
+    Complete P300 oddball stimulus system with color cycling.
     
     The paradigm uses:
-    - Top target: Flashes discretely (associated with "move up")
-    - Bottom target: Flashes discretely (associated with "move down")
-    - Alternating or random flash sequence
+    - Top target: Flashes discretely with color cycling
+    - Bottom target: Flashes discretely with color cycling
+    - Red is the oddball target (rare, attended)
+    - Other colors are non-targets (frequent, ignored)
+    - Red NEVER appears on both top and bottom simultaneously
     - ERP extraction: -100ms to +800ms around each flash
     
     Attributes:
         flash_duration_ms: Duration of each flash in milliseconds
         isi_ms: Inter-stimulus interval in milliseconds
         duration: Total stimulus duration in seconds
-        flash_mode: 'alternating' or 'random' flash sequence
+        target_probability: Probability of red (target) appearing (default 0.2 = 20%)
     """
     flash_duration_ms: int = 150
     isi_ms: int = 750
     duration: float = 10.0
-    flash_mode: str = "alternating"  # 'alternating' or 'random'
+    target_probability: float = 0.2  # 20% chance of red (oddball)
     
     # Targets
     top_target: P300FlashTarget = field(init=False)
@@ -142,9 +173,11 @@ class P300Stimulus:
     _start_time: float = field(default=0.0, repr=False)
     _elapsed_time: float = field(default=0.0, repr=False)
     
-    # Flash timing tracking (for epoching)
-    _flash_onsets: List[Tuple[str, float]] = field(default_factory=list, repr=False)  # (position, time)
+    # Flash timing tracking (for epoching) - now includes color
+    _flash_onsets: List[Tuple[str, str, float]] = field(default_factory=list, repr=False)  # (position, color, time)
     _last_flash_position: Optional[str] = field(default=None, repr=False)
+    _last_top_color: Optional[str] = field(default=None, repr=False)
+    _last_bottom_color: Optional[str] = field(default=None, repr=False)
     
     # Callbacks
     on_flash: Optional[Callable[[str, float], None]] = None  # (position, timestamp)
@@ -156,7 +189,7 @@ class P300Stimulus:
             position="top",
             flash_duration_ms=self.flash_duration_ms,
             isi_ms=self.isi_ms,
-            color_on=(255, 255, 255),
+            current_color="blue",
             color_off=(40, 40, 40),
             size=(100, 100)
         )
@@ -165,10 +198,39 @@ class P300Stimulus:
             position="bottom",
             flash_duration_ms=self.flash_duration_ms,
             isi_ms=self.isi_ms,
-            color_on=(255, 255, 255),
+            current_color="green",
             color_off=(40, 40, 40),
             size=(100, 100)
         )
+    
+    def _select_colors(self) -> Tuple[str, str]:
+        """
+        Select colors for top and bottom targets.
+        
+        Ensures red never appears on both simultaneously.
+        Red appears with target_probability on each position independently.
+        
+        Returns:
+            Tuple of (top_color, bottom_color)
+        """
+        # Decide if each position should show red
+        top_is_red = random.random() < self.target_probability
+        bottom_is_red = random.random() < self.target_probability
+        
+        # CRITICAL: If both would be red, randomly choose one
+        if top_is_red and bottom_is_red:
+            if random.random() < 0.5:
+                top_is_red = True
+                bottom_is_red = False
+            else:
+                top_is_red = False
+                bottom_is_red = True
+        
+        # Select colors
+        top_color = TARGET_COLOR if top_is_red else random.choice(NON_TARGET_COLORS)
+        bottom_color = TARGET_COLOR if bottom_is_red else random.choice(NON_TARGET_COLORS)
+        
+        return (top_color, bottom_color)
     
     def start(self) -> None:
         """Start the stimulus presentation."""
@@ -245,17 +307,27 @@ class P300Stimulus:
         top_state = self.top_target.update(current_time)
         bottom_state = self.bottom_target.update(current_time)
         
-        # Track flash onsets (for epoching)
+        # Select new colors when targets enter IDLE state (ready for next flash)
+        if top_state == FlashState.IDLE and self._last_top_color != self.top_target.current_color:
+            top_color, bottom_color = self._select_colors()
+            self.top_target.set_color(top_color)
+            self.bottom_target.set_color(bottom_color)
+            self._last_top_color = top_color
+            self._last_bottom_color = bottom_color
+        
+        # Track flash onsets (for epoching) - now includes color
         if top_state == FlashState.FLASHING and self._last_flash_position != "top":
             absolute_time = time.perf_counter()
-            self._flash_onsets.append(("top", absolute_time))
+            color = self.top_target.current_color
+            self._flash_onsets.append(("top", color, absolute_time))
             self._last_flash_position = "top"
             if self.on_flash:
                 self.on_flash("top", absolute_time)
         
         if bottom_state == FlashState.FLASHING and self._last_flash_position != "bottom":
             absolute_time = time.perf_counter()
-            self._flash_onsets.append(("bottom", absolute_time))
+            color = self.bottom_target.current_color
+            self._flash_onsets.append(("bottom", color, absolute_time))
             self._last_flash_position = "bottom"
             if self.on_flash:
                 self.on_flash("bottom", absolute_time)
@@ -267,7 +339,7 @@ class P300Stimulus:
         Get current colors for both targets.
         
         Returns:
-            Tuple of (top_color, bottom_color)
+            Tuple of (top_color_rgb, bottom_color_rgb)
         """
         current_time = self.elapsed_time
         return (
@@ -275,10 +347,19 @@ class P300Stimulus:
             self.bottom_target.get_color(current_time)
         )
     
-    def get_flash_onsets(self) -> List[Tuple[str, float]]:
+    def get_flash_onsets(self) -> List[Tuple[str, str, float]]:
         """
-        Get list of flash onset times (position, absolute_time).
+        Get list of flash onset times (position, color, absolute_time).
         
         Used for epoching EEG data around each flash.
         """
         return self._flash_onsets.copy()
+    
+    def get_target_flashes(self) -> List[Tuple[str, float]]:
+        """
+        Get only target (red) flash onsets.
+        
+        Returns:
+            List of (position, absolute_time) for red flashes only
+        """
+        return [(pos, time) for pos, color, time in self._flash_onsets if color == TARGET_COLOR]

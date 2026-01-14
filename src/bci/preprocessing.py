@@ -784,14 +784,14 @@ class LSLPreprocessor(EEGPreprocessor):
         """
         Pull data from LSL and process it.
         
-        LSL receiver already extracts EEG channels (first 8) immediately after pulling.
-        This method processes the EEG data and returns only occipital channels.
+        For P300: Returns only Cz channel (index 2) - optimal for P300 ERP.
+        For SSVEP: Returns occipital channels (PO7, Oz, PO8).
         
         Args:
             n_samples: Number of samples to pull
             
         Returns:
-            Processed EEG data (occipital channels only: PO7, Oz, PO8 = 3 channels)
+            Processed EEG data (Cz channel only for P300, or occipital for SSVEP)
         """
         if not self.is_lsl_connected:
             return np.array([])
@@ -805,31 +805,32 @@ class LSLPreprocessor(EEGPreprocessor):
         # Process all EEG channels (needed for CAR)
         processed = self.process_chunk(samples)
         
-        # Extract only occipital channels (PO7, Oz, PO8 = indices 5, 6, 7)
-        # SSVEP is strongest in occipital cortex
+        # Extract only Cz channel (index 2) for P300
+        # Cz is optimal for P300 ERP detection
         if processed.shape[1] >= 8:
-            occipital_indices = [5, 6, 7]  # PO7, Oz, PO8
-            return processed[:, occipital_indices]
+            cz_index = 2  # Cz is channel 2 (Fz=0, C3=1, Cz=2, C4=3, Pz=4, PO7=5, Oz=6, PO8=7)
+            cz_data = processed[:, cz_index:cz_index+1]  # Keep 2D shape (n_samples, 1)
+            return cz_data
         else:
             # Fallback: return all channels if structure is unexpected
             return processed
     
     def get_lsl_buffer(self, seconds: float = 1.0) -> NDArray[np.float64]:
         """
-        Get processed data from LSL buffer (occipital channels only).
+        Get processed data from LSL buffer (Cz channel only for P300).
         
         Args:
             seconds: How many seconds of data
         
         Returns:
-            Processed buffer data (occipital channels only: PO7, Oz, PO8 = 3 channels)
+            Processed buffer data (Cz channel only = 1 channel)
         """
         if not self.is_lsl_connected:
-            # For non-LSL mode, get recent data and extract occipital
+            # For non-LSL mode, get recent data and extract Cz
             data = self.get_recent_data(seconds)
             if len(data) > 0 and data.shape[1] >= 8:
-                occipital_indices = [5, 6, 7]  # PO7, Oz, PO8
-                return data[:, occipital_indices]
+                cz_index = 2  # Cz
+                return data[:, cz_index:cz_index+1]
             return data
         
         # Get raw from LSL (already contains only EEG channels)
@@ -841,10 +842,10 @@ class LSLPreprocessor(EEGPreprocessor):
         # Process the chunk (all EEG channels needed for CAR)
         processed = self.process_chunk(raw_data)
         
-        # Extract only occipital channels (PO7, Oz, PO8 = indices 5, 6, 7)
+        # Extract only Cz channel (index 2) for P300
         if processed.shape[1] >= 8:
-            occipital_indices = [5, 6, 7]
-            return processed[:, occipital_indices]
+            cz_index = 2
+            return processed[:, cz_index:cz_index+1]
         else:
             return processed
 

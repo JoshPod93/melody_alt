@@ -1157,10 +1157,11 @@ class BCICompositionWindow(QMainWindow):
                 new_onsets = flash_onsets[len(self._flash_onsets):]
                 self._flash_onsets.extend(new_onsets)
                 
-                # Send markers for new flashes
+                # Send markers for new flashes (include color info)
                 if self.marker_sender:
-                    for position, flash_time in new_onsets:
-                        marker = f"P300_FLASH_{position.upper()}"
+                    for position, color, flash_time in new_onsets:
+                        is_target = "TARGET" if color == "red" else "NONTARGET"
+                        marker = f"P300_{position.upper()}_{color.upper()}_{is_target}"
                         self.marker_sender.send_marker(marker, flash_time)
         
         # Get EEG data and classify using P300 epoching
@@ -1192,7 +1193,8 @@ class BCICompositionWindow(QMainWindow):
                             buffer_times.extend(timestamps)
                         buffer_times = np.array(buffer_times)
                         
-                        # Classify using P300
+                        # Classify using P300 oddball paradigm
+                        # Flash onsets now include color: (position, color, time)
                         result = self.classifier.classify_averaged(
                             all_data,
                             self._flash_onsets,

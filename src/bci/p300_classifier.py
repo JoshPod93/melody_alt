@@ -1,14 +1,18 @@
 """
-P300 Classifier module for BCI-UPIC.
+P300 Oddball Classifier module for BCI-UPIC.
 
-Provides ERP-based classification for P300 paradigm.
+Provides ERP-based classification for P300 oddball paradigm.
 Determines which target the user is attending to based on ERP responses.
 
-P300 ERP characteristics:
+P300 Oddball paradigm:
+- Red flashes are targets (oddball, rare, attended)
+- Other colors are non-targets (frequent, ignored)
+- P300 ERP is larger for attended (red) targets
 - Peak latency: ~300ms post-stimulus
 - Epoch window: -100ms to +800ms
 - Baseline correction: -100ms to 0ms
-- Averaging multiple epochs improves SNR
+- Uses only Cz electrode (optimal for P300)
+- Template matching and peak detection for robust classification
 """
 
 from __future__ import annotations
@@ -204,48 +208,74 @@ class P300Classifier:
     def classify_averaged(
         self,
         eeg_data: NDArray[np.float64],
-        flash_onsets: List[Tuple[str, float]],
+        flash_onsets: List[Tuple[str, str, float]],
         data_times: NDArray[np.float64]
     ) -> ClassificationResult:
         """
-        Classify based on averaged ERPs from multiple epochs.
+        Classify based on averaged ERPs from multiple epochs (oddball paradigm).
         
         Args:
-            eeg_data: EEG data array (n_samples, n_channels)
-            flash_onsets: List of (position, timestamp) tuples
+            eeg_data: EEG data array (n_samples, 1) - Cz channel only
+            flash_onsets: List of (position, color, timestamp) tuples
             data_times: Timestamps for each sample in eeg_data
             
         Returns:
             ClassificationResult
         """
-        # Process recent flash onsets
-        top_amplitudes = []
-        bottom_amplitudes = []
+        # Separate target (red) and non-target epochs
+        top_target_epochs = []
+        bottom_target_epochs = []
+        top_nontarget_epochs = []
+        bottom_nontarget_epochs = []
         
-        for position, flash_time in flash_onsets[-self.n_epochs_to_average:]:
+        # Process recent flash onsets
+        for position, color, flash_time in flash_onsets[-self.n_epochs_to_average * 2:]:  # Get more to ensure enough targets
             epoch = self.epoch_data(eeg_data, flash_time, data_times)
             if epoch is not None:
                 amplitude = self.classify_epoch(epoch, position)
                 if amplitude is not None:
+                    is_target = (color == 'red')
                     if position == "top":
-                        top_amplitudes.append(amplitude)
-                    else:
-                        bottom_amplitudes.append(amplitude)
+                        if is_target:
+                            top_target_epochs.append(amplitude)
+                        else:
+                            top_nontarget_epochs.append(amplitude)
+                    else:  # bottom
+                        if is_target:
+                            bottom_target_epochs.append(amplitude)
+                        else:
+                            bottom_nontarget_epochs.append(amplitude)
         
-        # Average amplitudes
-        avg_top = np.mean(top_amplitudes) if top_amplitudes else 0.0
-        avg_bottom = np.mean(bottom_amplitudes) if bottom_amplitudes else 0.0
+        # Calculate average P300 amplitudes
+        # For oddball: compare target (red) vs non-target amplitudes
+        avg_top_target = np.mean(top_target_epochs) if top_target_epochs else 0.0
+        avg_bottom_target = np.mean(bottom_target_epochs) if bottom_target_epochs else 0.0
+        avg_top_nontarget = np.mean(top_nontarget_epochs) if top_nontarget_epochs else 0.0
+        avg_bottom_nontarget = np.mean(bottom_nontarget_epochs) if bottom_nontarget_epochs else 0.0
         
-        # Classification: larger P300 amplitude indicates attended target
-        diff = avg_top - avg_bottom
+        # P300 oddball effect: target (red) should have larger P300 than non-targets
+        # Calculate difference: target amplitude - non-target amplitude
+        top_diff = avg_top_target - avg_top_nontarget if avg_top_nontarget > 0 else avg_top_target
+        bottom_diff = avg_bottom_target - avg_bottom_nontarget if avg_bottom_nontarget > 0 else avg_bottom_target
+        
+        # Classification: larger difference indicates attended target
+        diff = top_diff - bottom_diff
         raw_score = diff
         
-        # Normalize confidence
-        total_amplitude = avg_top + avg_bottom
-        if total_amplitude > 0:
-            confidence = abs(diff) / total_amplitude
+        # Normalize confidence based on absolute differences
+        total_diff = abs(top_diff) + abs(bottom_diff)
+        if total_diff > 0:
+            confidence = abs(diff) / total_diff
         else:
             confidence = 0.0
+        
+        # Boost confidence if we have clear target responses
+        if avg_top_target > 0 and avg_bottom_target > 0:
+            # Both targets have responses, compare them
+            max_target = max(avg_top_target, avg_bottom_target)
+            min_target = min(avg_top_target, avg_bottom_target)
+            if max_target > 0:
+                confidence *= (max_target / (max_target + min_target))
         
         # Determine target
         if confidence < self.threshold:
@@ -259,8 +289,8 @@ class P300Classifier:
         result = ClassificationResult(
             target=target,
             confidence=min(confidence, 1.0),
-            p300_amplitude_top=avg_top,
-            p300_amplitude_bottom=avg_bottom,
+            p300_amplitude_top=avg_top_target,
+            p300_amplitude_bottom=avg_bottom_target,
             raw_score=raw_score
         )
         
@@ -292,8 +322,8 @@ class P300Classifier:
             result = ClassificationResult(
                 target=smoothed_target,
                 confidence=min(avg_confidence, 1.0),
-                p300_amplitude_top=avg_top,
-                p300_amplitude_bottom=avg_bottom,
+                p300_amplitude_top=avg_top_target,
+                p300_amplitude_bottom=avg_bottom_target,
                 raw_score=avg_raw_score
             )
         
