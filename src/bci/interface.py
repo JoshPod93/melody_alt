@@ -37,7 +37,7 @@ from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
 
 from .stimulus import SSVEPStimulus, FlickerState
-from .p300_stimulus import P300Stimulus, FlashState
+from .p300_stimulus import P300Stimulus, P300FlashTarget, FlashState
 from .preprocessing import EEGPreprocessor, SimulatedEEGSource, LSLPreprocessor
 from .classifier import SSVEPClassifier, ClassificationResult as SSVEPClassificationResult
 from .p300_classifier import P300Classifier, AttentionTarget, ClassificationResult
@@ -69,15 +69,18 @@ class P300FlashWidget(QWidget):
     def __init__(
         self,
         position: str = "top",
+        target: Optional[P300FlashTarget] = None,
         parent: Optional[QWidget] = None
     ):
         super().__init__(parent)
         self.position = position
         self._is_active = False
         
-        # Create P300 flash target
-        from .p300_stimulus import P300FlashTarget
-        self.target = P300FlashTarget(position=position)
+        # Use provided target or create new one
+        if target is not None:
+            self.target = target
+        else:
+            self.target = P300FlashTarget(position=position)
         
         # Colors
         self.color_on = QColor(255, 255, 255)
@@ -98,28 +101,26 @@ class P300FlashWidget(QWidget):
         self._update_timer.timeout.connect(self.update)
     
     def paintEvent(self, event) -> None:
-        """Paint the flash target."""
+        """Paint the flash target - discrete color changes, no flickering."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Get current state
-        if self._is_active:
-            state = self.target.get_state()
-            is_flashing = (state == FlashState.FLASHING)
-        else:
-            is_flashing = False
-        
         # Get color from target (returns RGB tuple)
-        color_tuple = self.target.get_color()
+        # get_color() uses peek_state() so it doesn't update the state machine
+        # The state machine is updated by update_flash() from the stimulus system
+        if self._is_active:
+            color_tuple = self.target.get_color()
+        else:
+            color_tuple = self.target.color_off
         
         # Convert to QColor
         if isinstance(color_tuple, tuple) and len(color_tuple) == 3:
             color = QColor(*color_tuple)
         else:
-            # Fallback to default colors
-            color = self.color_on if is_flashing else self.color_off
+            # Fallback to default off color
+            color = QColor(*self.target.color_off)
         
-        # Draw rectangle
+        # Draw rectangle with solid color (no flickering, just discrete color changes)
         rect = self.rect()
         painter.fillRect(rect, color)
         
@@ -131,7 +132,8 @@ class P300FlashWidget(QWidget):
         """Set whether the target is active."""
         self._is_active = active
         if active:
-            self.target.start()
+            # Don't call target.start() here - the stimulus system handles starting
+            # This prevents resetting timing when stimulus is already running
             self._update_timer.start(16)  # ~60Hz update rate
         else:
             self._update_timer.stop()
@@ -676,8 +678,8 @@ class BCICompositionWindow(QMainWindow):
         
         self.setMinimumSize(1000, 700)
         
-        # BCI components - P300 paradigm
-        self.stimulus = P300Stimulus(duration=10.0, flash_duration_ms=150, isi_ms=750)
+        # BCI components - P300 paradigm (optimized timing: 62ms flash, 25ms ISI = 87ms cycle, ~11.5 flashes/sec)
+        self.stimulus = P300Stimulus(duration=10.0, flash_duration_ms=62, isi_ms=25)
         self.classifier = P300Classifier(sample_rate=250.0)
         self.controller = BCICursorController(duration=10.0)
         
@@ -754,7 +756,8 @@ class BCICompositionWindow(QMainWindow):
         top_container = QHBoxLayout()
         top_container.setSpacing(10)
         self.top_indicator = IndicatorLight()
-        self.top_target = P300FlashWidget("top")
+        # Use stimulus's target instance so color updates are synchronized
+        self.top_target = P300FlashWidget("top", target=self.stimulus.top_target)
         top_container.addWidget(self.top_indicator)
         top_container.addWidget(self.top_target)
         top_container.addStretch()
@@ -770,7 +773,8 @@ class BCICompositionWindow(QMainWindow):
         bottom_container = QHBoxLayout()
         bottom_container.setSpacing(10)
         self.bottom_indicator = IndicatorLight()
-        self.bottom_target = P300FlashWidget("bottom")
+        # Use stimulus's target instance so color updates are synchronized
+        self.bottom_target = P300FlashWidget("bottom", target=self.stimulus.bottom_target)
         bottom_container.addWidget(self.bottom_indicator)
         bottom_container.addWidget(self.bottom_target)
         bottom_container.addStretch()
@@ -1027,12 +1031,52 @@ class BCICompositionWindow(QMainWindow):
         self.stimulus.duration = float(duration)
         self.canvas.set_duration(float(duration))
         
+        # Generate and verify color sequences BEFORE starting
+        # Duration must be set first since sequence length depends on it
+        print("[P300] Generating and verifying color sequences...")
+        if not self.stimulus.generate_and_verify_sequences():
+            QMessageBox.critical(
+                self,
+                "Sequence Generation Failed",
+                "Failed to generate valid color sequences.\n\n"
+                "This should not happen. Please restart the application."
+            )
+            return
+        
+        # Create data logging directory
+        from datetime import datetime
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._session_log_dir = Path("p300_sessions") / timestamp_str
+        self._session_log_dir.mkdir(parents=True, exist_ok=True)
+        
         # Start
         self.controller.start()
         # Start P300 stimulus (handles flash timing)
         self.stimulus.start()
         self._flash_onsets.clear()
         self._eeg_buffer.clear()
+        
+        # Initialize logging
+        self._log_trigger_file = self._session_log_dir / "triggers.jsonl"
+        self._log_eeg_file = self._session_log_dir / "eeg_data.npy"
+        self._log_metadata_file = self._session_log_dir / "metadata.json"
+        
+        # Save metadata
+        metadata = {
+            "timestamp": timestamp_str,
+            "duration": duration,
+            "flash_duration_ms": self.stimulus.flash_duration_ms,
+            "isi_ms": self.stimulus.isi_ms,
+            "target_probability": self.stimulus.target_probability,
+            "expected_top_sequence": self.stimulus._top_color_sequence,
+            "expected_bottom_sequence": self.stimulus._bottom_color_sequence,
+            "lsl_connected": self._lsl_connected,
+            "device": self.preprocessor._lsl_receiver.stream_name if hasattr(self.preprocessor, '_lsl_receiver') and self.preprocessor._lsl_receiver else None
+        }
+        with open(self._log_metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        print(f"[P300] Session data logging to: {self._session_log_dir}")
         
         # Update UI first
         self.start_btn.setEnabled(False)
@@ -1059,6 +1103,25 @@ class BCICompositionWindow(QMainWindow):
         # Send marker if LSL available
         if self.marker_sender:
             self.marker_sender.send("Composition End")
+        
+        # Verify trigger alignment before stopping
+        is_aligned, verification_report = self.stimulus.verify_trigger_alignment()
+        if not is_aligned:
+            print(f"[P300 WARNING] Trigger alignment mismatch detected!")
+            print(f"  Expected: {verification_report['total_expected']} flashes")
+            print(f"  Actual: {verification_report['total_actual']} flashes")
+            print(f"  Top matches: {verification_report['top_matches']}/{len(self.stimulus._top_color_sequence)}")
+            print(f"  Bottom matches: {verification_report['bottom_matches']}/{len(self.stimulus._bottom_color_sequence)}")
+            if verification_report['top_mismatches'] > 0:
+                print(f"  Top mismatches: {verification_report['top_mismatches']}")
+                for mismatch in verification_report['top_mismatch_details'][:5]:  # Show first 5
+                    print(f"    Index {mismatch['index']}: expected {mismatch['expected']}, got {mismatch.get('actual', 'MISSING')}")
+            if verification_report['bottom_mismatches'] > 0:
+                print(f"  Bottom mismatches: {verification_report['bottom_mismatches']}")
+                for mismatch in verification_report['bottom_mismatch_details'][:5]:  # Show first 5
+                    print(f"    Index {mismatch['index']}: expected {mismatch['expected']}, got {mismatch.get('actual', 'MISSING')}")
+        else:
+            print(f"[P300] Trigger alignment verified: {verification_report['total_actual']} flashes match expected sequence")
         
         # Stop flickering - EXACTLY match screen calibration protocol
         # Widgets are independent, no need to call stimulus.stop()
@@ -1167,9 +1230,23 @@ class BCICompositionWindow(QMainWindow):
                 # Send markers for new flashes (include color info)
                 if self.marker_sender:
                     for position, color, flash_time in new_onsets:
-                        is_target = "TARGET" if color == "red" else "NONTARGET"
-                        marker = f"P300_{position.upper()}_{color.upper()}_{is_target}"
-                        self.marker_sender.send_marker(marker, flash_time)
+                        # Ensure color is a string (not being iterated)
+                        color_str = str(color) if isinstance(color, str) else color
+                        is_target = "TARGET" if color_str == "red" else "NONTARGET"
+                        marker = f"P300_{position.upper()}_{color_str.upper()}_{is_target}"
+                        self.marker_sender.send(marker)
+                        
+                        # Log trigger to file
+                        if hasattr(self, '_log_trigger_file'):
+                            trigger_data = {
+                                "timestamp": flash_time,
+                                "position": position,
+                                "color": color_str,
+                                "is_target": is_target == "TARGET",
+                                "marker": marker
+                            }
+                            with open(self._log_trigger_file, 'a') as f:
+                                f.write(json.dumps(trigger_data) + '\n')
         
         # Get EEG data and classify using P300 epoching
         if self._use_lsl and self._lsl_connected:
@@ -1177,9 +1254,24 @@ class BCICompositionWindow(QMainWindow):
             n_samples_per_update = int(0.050 * self.preprocessor.sample_rate)  # 50ms worth
             processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update)
             
-            if len(processed) > 0:
-                # Add to buffer with timestamp
+            # Log EEG data
+            if hasattr(self, '_log_eeg_file') and processed is not None and len(processed) > 0:
                 current_time = time.perf_counter()
+                # Append to buffer for batch saving
+                if not hasattr(self, '_eeg_log_buffer'):
+                    self._eeg_log_buffer = []
+                self._eeg_log_buffer.append({
+                    "data": processed.tolist(),
+                    "timestamp": current_time
+                })
+            
+            if len(processed) > 0:
+                # Add to buffer with LSL-synchronized timestamp
+                try:
+                    from pylsl import local_clock
+                    current_time = local_clock()  # Use LSL clock for synchronization
+                except ImportError:
+                    current_time = time.perf_counter()  # Fallback if LSL not available
                 self._eeg_buffer.append((processed, current_time))
                 
                 # Trim buffer to max duration
@@ -1191,11 +1283,12 @@ class BCICompositionWindow(QMainWindow):
                     # Reconstruct continuous EEG data with timestamps
                     if len(self._eeg_buffer) > 0:
                         all_data = np.vstack([data for data, _ in self._eeg_buffer])
-                        # Create timestamps array
+                        # Create timestamps array - CRITICAL: Use LSL-synchronized timestamps
                         buffer_times = []
                         sample_rate = self.preprocessor.sample_rate
                         for i, (data, ts) in enumerate(self._eeg_buffer):
                             n_samples = len(data)
+                            # Timestamps are already in LSL time domain
                             timestamps = np.linspace(ts, ts + (n_samples - 1) / sample_rate, n_samples)
                             buffer_times.extend(timestamps)
                         buffer_times = np.array(buffer_times)
@@ -1319,16 +1412,24 @@ class BCICompositionWindow(QMainWindow):
                 performance_metrics = {}
             
             try:
+                # P300 doesn't have frequencies, use flash timing instead
+                metadata = {
+                    'simulated': not self._use_lsl,
+                    'paradigm': 'P300',
+                    'flash_duration_ms': self.stimulus.flash_duration_ms,
+                    'isi_ms': self.stimulus.isi_ms,
+                    'performance_metrics': performance_metrics
+                }
+                # Add frequency info only if it exists (for SSVEP compatibility)
+                if hasattr(self.stimulus, 'top_frequency'):
+                    metadata['top_frequency'] = self.stimulus.top_frequency
+                    metadata['bottom_frequency'] = self.stimulus.bottom_frequency
+                
                 self.current_score = BCIScore(
                     trail=trail,
                     duration=self.controller.duration,
                     waveform_name=self.waveform_combo.currentText(),
-                    metadata={
-                        'simulated': not self._use_lsl,
-                        'top_frequency': self.stimulus.top_frequency,
-                        'bottom_frequency': self.stimulus.bottom_frequency,
-                        'performance_metrics': performance_metrics
-                    }
+                    metadata=metadata
                 )
             except Exception as e:
                 print(f"[ERROR] Failed to create BCIScore: {e}")
@@ -1417,23 +1518,44 @@ class BCICompositionWindow(QMainWindow):
         if hasattr(self, '_classification_results') and len(self._classification_results) > 0:
             confidences = [r.confidence for r in self._classification_results]
             targets = [r.target for r in self._classification_results]
-            power_higher = [r.power_higher_freq for r in self._classification_results]
-            power_lower = [r.power_lower_freq for r in self._classification_results]
             
-            metrics['classification'] = {
-                'n_classifications': len(self._classification_results),
-                'mean_confidence': np.mean(confidences),
-                'std_confidence': np.std(confidences),
-                'min_confidence': np.min(confidences),
-                'max_confidence': np.max(confidences),
-                'target_distribution': {
-                    'UP': sum(1 for t in targets if t == AttentionTarget.UP),
-                    'DOWN': sum(1 for t in targets if t == AttentionTarget.DOWN),
-                    'NONE': sum(1 for t in targets if t == AttentionTarget.NONE)
-                },
-                'mean_power_higher': np.mean(power_higher),
-                'mean_power_lower': np.mean(power_lower)
-            }
+            # P300 uses amplitudes, not power
+            if hasattr(self._classification_results[0], 'p300_amplitude_top'):
+                # P300 results
+                p300_top = [r.p300_amplitude_top for r in self._classification_results]
+                p300_bottom = [r.p300_amplitude_bottom for r in self._classification_results]
+                metrics['classification'] = {
+                    'n_classifications': len(self._classification_results),
+                    'mean_confidence': np.mean(confidences),
+                    'std_confidence': np.std(confidences),
+                    'min_confidence': np.min(confidences),
+                    'max_confidence': np.max(confidences),
+                    'target_distribution': {
+                        'UP': sum(1 for t in targets if t == AttentionTarget.UP),
+                        'DOWN': sum(1 for t in targets if t == AttentionTarget.DOWN),
+                        'NONE': sum(1 for t in targets if t == AttentionTarget.NONE)
+                    },
+                    'mean_p300_top': np.mean(p300_top),
+                    'mean_p300_bottom': np.mean(p300_bottom)
+                }
+            else:
+                # SSVEP results (backward compatibility)
+                power_higher = [r.power_higher_freq for r in self._classification_results]
+                power_lower = [r.power_lower_freq for r in self._classification_results]
+                metrics['classification'] = {
+                    'n_classifications': len(self._classification_results),
+                    'mean_confidence': np.mean(confidences),
+                    'std_confidence': np.std(confidences),
+                    'min_confidence': np.min(confidences),
+                    'max_confidence': np.max(confidences),
+                    'target_distribution': {
+                        'UP': sum(1 for t in targets if t == AttentionTarget.UP),
+                        'DOWN': sum(1 for t in targets if t == AttentionTarget.DOWN),
+                        'NONE': sum(1 for t in targets if t == AttentionTarget.NONE)
+                    },
+                    'mean_power_higher': np.mean(power_higher),
+                    'mean_power_lower': np.mean(power_lower)
+                }
             
             # Classification rate (classifications per second)
             if hasattr(self, '_composition_start_time') and hasattr(self, '_classification_times'):
@@ -1511,8 +1633,13 @@ class BCICompositionWindow(QMainWindow):
             for target, count in dist.items():
                 pct = (count / cf['n_classifications'] * 100) if cf['n_classifications'] > 0 else 0
                 print(f"    {target}: {count} ({pct:.1f}%)")
-            print(f"  Mean power (higher): {cf['mean_power_higher']:.3f}")
-            print(f"  Mean power (lower):  {cf['mean_power_lower']:.3f}")
+            # P300 uses amplitudes, not power
+            if 'mean_p300_top' in cf:
+                print(f"  Mean P300 amplitude (top): {cf['mean_p300_top']:.3f} μV")
+                print(f"  Mean P300 amplitude (bottom): {cf['mean_p300_bottom']:.3f} μV")
+            elif 'mean_power_higher' in cf:
+                print(f"  Mean power (higher): {cf['mean_power_higher']:.3f}")
+                print(f"  Mean power (lower):  {cf['mean_power_lower']:.3f}")
         
         print("=" * 60 + "\n")
         

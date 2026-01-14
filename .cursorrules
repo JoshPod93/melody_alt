@@ -1,8 +1,8 @@
 # UPIC Clone Project - Cursor Rules
 
 ## Environment
-- **Always use the `upic` conda environment** for all Python operations
-- Activate with: `conda activate upic`
+- **Always use the `hack` conda environment** for all Python operations
+- Activate with: `conda activate hack`
 - Python version: 3.11
 
 ## Project Overview
@@ -21,7 +21,7 @@ This is a Python-based clone of the UPIC (Unité Polyagogique Informatique du CE
 - `tests/` - Unit tests
 
 ## Dependencies
-- All new dependencies must be installed in the `upic` conda environment
+- All new dependencies must be installed in the `hack` conda environment
 - Update requirements.txt when adding new packages
 
 ## Git Workflow

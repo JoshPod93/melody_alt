@@ -77,6 +77,16 @@ class P300Classifier:
     _history: List[ClassificationResult] = field(default_factory=list, repr=False)
     _history_size: int = 3
     
+    @property
+    def is_calibrated(self) -> bool:
+        """
+        Check if classifier is calibrated.
+        
+        For P300, calibration is optional (templates can be learned online).
+        Returns False by default (no subject-specific calibration required).
+        """
+        return False  # P300 doesn't require calibration like SSVEP
+    
     def epoch_data(
         self,
         eeg_data: NDArray[np.float64],
@@ -101,6 +111,15 @@ class P300Classifier:
         
         # Find stimulus index in data_times
         stimulus_idx = np.searchsorted(data_times, stimulus_time)
+        
+        # Diagnostic: Log timestamp alignment issues (first few epochs only)
+        if not hasattr(self, '_epoch_diagnostic_count'):
+            self._epoch_diagnostic_count = 0
+        if self._epoch_diagnostic_count < 5:
+            time_diff = abs(data_times[stimulus_idx] - stimulus_time) if stimulus_idx < len(data_times) else float('inf')
+            if time_diff > 0.1:  # More than 100ms difference
+                print(f"[P300 TIMESTAMP WARNING] Flash time {stimulus_time:.3f} vs EEG time {data_times[stimulus_idx] if stimulus_idx < len(data_times) else 'N/A':.3f}, diff={time_diff*1000:.1f}ms")
+            self._epoch_diagnostic_count += 1
         
         # Check if we have enough data
         if stimulus_idx + pre_samples < 0 or stimulus_idx + post_samples > len(eeg_data):
@@ -229,12 +248,16 @@ class P300Classifier:
         bottom_nontarget_epochs = []
         
         # Process recent flash onsets
-        for position, color, flash_time in flash_onsets[-self.n_epochs_to_average * 2:]:  # Get more to ensure enough targets
+        # Get more flashes to ensure we have enough target (red) flashes
+        n_flashes_to_check = self.n_epochs_to_average * 4  # Check more to get enough targets
+        for position, color, flash_time in flash_onsets[-n_flashes_to_check:]:
             epoch = self.epoch_data(eeg_data, flash_time, data_times)
             if epoch is not None:
                 amplitude = self.classify_epoch(epoch, position)
                 if amplitude is not None:
-                    is_target = (color == 'red')
+                    # Ensure color is a string for comparison
+                    color_str = str(color).lower() if isinstance(color, str) else str(color)
+                    is_target = (color_str == 'red')
                     if position == "top":
                         if is_target:
                             top_target_epochs.append(amplitude)
@@ -253,10 +276,29 @@ class P300Classifier:
         avg_top_nontarget = np.mean(top_nontarget_epochs) if top_nontarget_epochs else 0.0
         avg_bottom_nontarget = np.mean(bottom_nontarget_epochs) if bottom_nontarget_epochs else 0.0
         
+        # Debug: Log epoch counts periodically
+        if not hasattr(self, '_last_debug_log_time'):
+            self._last_debug_log_time = 0
+        import time as time_module
+        current_debug_time = time_module.time()
+        if current_debug_time - self._last_debug_log_time > 2.0:  # Log every 2 seconds
+            print(f"[P300 DEBUG] Epochs - Top target: {len(top_target_epochs)}, Top non-target: {len(top_nontarget_epochs)}, "
+                  f"Bottom target: {len(bottom_target_epochs)}, Bottom non-target: {len(bottom_nontarget_epochs)}, "
+                  f"Total flashes processed: {len(flash_onsets)}")
+            self._last_debug_log_time = current_debug_time
+        
         # P300 oddball effect: target (red) should have larger P300 than non-targets
         # Calculate difference: target amplitude - non-target amplitude
-        top_diff = avg_top_target - avg_top_nontarget if avg_top_nontarget > 0 else avg_top_target
-        bottom_diff = avg_bottom_target - avg_bottom_nontarget if avg_bottom_nontarget > 0 else avg_bottom_target
+        # If no non-targets, just use target amplitude
+        if avg_top_nontarget > 0:
+            top_diff = avg_top_target - avg_top_nontarget
+        else:
+            top_diff = avg_top_target if avg_top_target > 0 else 0.0
+        
+        if avg_bottom_nontarget > 0:
+            bottom_diff = avg_bottom_target - avg_bottom_nontarget
+        else:
+            bottom_diff = avg_bottom_target if avg_bottom_target > 0 else 0.0
         
         # Classification: larger difference indicates attended target
         diff = top_diff - bottom_diff
@@ -267,19 +309,31 @@ class P300Classifier:
         if total_diff > 0:
             confidence = abs(diff) / total_diff
         else:
-            confidence = 0.0
+            # No clear difference - use raw amplitudes
+            total_amp = avg_top_target + avg_bottom_target
+            if total_amp > 0:
+                confidence = abs(diff) / total_amp if diff != 0 else 0.1
+            else:
+                confidence = 0.1  # Minimum confidence
         
         # Boost confidence if we have clear target responses
-        if avg_top_target > 0 and avg_bottom_target > 0:
-            # Both targets have responses, compare them
+        if avg_top_target > 0 or avg_bottom_target > 0:
+            # At least one target has response
             max_target = max(avg_top_target, avg_bottom_target)
             min_target = min(avg_top_target, avg_bottom_target)
             if max_target > 0:
-                confidence *= (max_target / (max_target + min_target))
+                # Scale confidence by how much larger the max is
+                if min_target > 0:
+                    confidence *= (max_target / (max_target + min_target))
+                else:
+                    confidence = min(confidence * 1.5, 1.0)  # Boost if only one has response
         
-        # Determine target
-        if confidence < self.threshold:
-            target = AttentionTarget.NONE
+        # Determine target - BINARY: always UP or DOWN, never NONE
+        # Use a very low threshold or just use the sign of diff
+        if abs(diff) < 0.01 and total_diff < 0.1:
+            # Truly no signal - use very low confidence but still pick a direction
+            target = AttentionTarget.UP if diff >= 0 else AttentionTarget.DOWN
+            confidence = 0.1  # Very low confidence
         elif diff > 0:
             target = AttentionTarget.UP
         else:
@@ -308,9 +362,10 @@ class P300Classifier:
             # Average raw scores
             avg_raw_score = np.average([r.raw_score for r in self._history], weights=weights)
             
-            # Re-determine target based on smoothed score
-            if abs(avg_raw_score) < self.threshold * 0.5:  # Lower threshold for smoothed
-                smoothed_target = AttentionTarget.NONE
+            # Re-determine target based on smoothed score - BINARY: always UP or DOWN
+            if abs(avg_raw_score) < 0.01:
+                # No clear signal, but still pick a direction (use last direction or default to UP)
+                smoothed_target = AttentionTarget.UP if avg_raw_score >= 0 else AttentionTarget.DOWN
             elif avg_raw_score > 0:
                 smoothed_target = AttentionTarget.UP
             else:

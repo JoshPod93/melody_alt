@@ -750,7 +750,7 @@ class LSLPreprocessor(EEGPreprocessor):
                 self.n_channels = 8  # Force 8 EEG channels
                 
                 print(f"[LSL] Stream has {self._stream_n_channels} channels, using first 8 (EEG)")
-                print(f"[LSL] Analysis restricted to occipital channels: PO7, Oz, PO8 (indices 5, 6, 7)")
+                print(f"[LSL] Analysis restricted to Cz channel (index 2) for P300")
                 
                 # Reinitialize filters for correct sample rate and 8 channels
                 self._init_filters()
