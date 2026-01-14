@@ -133,9 +133,10 @@ class FlickerWidget(QWidget):
         self._timer_fire_count = 0
         self._last_timer_fire_time = None
         
-        # Flicker rate accuracy tracking
-        self._paint_intervals = []  # Store intervals between paints for frequency calculation
-        self._flicker_rate_samples = 250  # Number of samples to use for rate calculation
+        # Flicker rate accuracy tracking - track actual flicker cycles, not paint events
+        self._flicker_state_changes = []  # Store timestamps when flicker state changes (ON->OFF or OFF->ON)
+        self._last_flicker_state = None
+        self._flicker_rate_samples = 50  # Number of flicker cycles to use for rate calculation
         
         if not self._use_high_precision:
             # Connect QTimer after monitoring vars are initialized
@@ -238,39 +239,55 @@ class FlickerWidget(QWidget):
             else:
                 self._actual_phase = 0.0 if intensity <= 0 else np.pi
             
+            # Determine current flicker state (ON or OFF) - track actual flicker cycles, not paint events
+            current_state = FlickerState.ON if intensity > 0.5 else FlickerState.OFF
+            
+            # Track actual flicker cycles (state changes), not paint events
+            if self._last_flicker_state is not None and current_state != self._last_flicker_state:
+                # State changed - record timestamp for flicker rate calculation
+                self._flicker_state_changes.append(current_time)
+                if len(self._flicker_state_changes) > self._flicker_rate_samples * 2:  # Keep enough for rate calc
+                    self._flicker_state_changes.pop(0)
+            
+            self._last_flicker_state = current_state
+            
             # Monitor paint rate and phase drift
             self._paint_count += 1
             if self._last_paint_time is not None:
                 dt = current_time - self._last_paint_time
                 phase_drift = abs(self._expected_phase - self._actual_phase)
                 
-                # Track paint intervals for flicker rate calculation
-                self._paint_intervals.append(dt)
-                if len(self._paint_intervals) > self._flicker_rate_samples:
-                    self._paint_intervals.pop(0)
-                
                 # Log if we detect significant drift or slow updates
-                if self._paint_count % 125 == 0:  # Log every ~1 second at 125Hz
-                    if dt > 0.020:  # More than 20ms between paints (should be ~8ms)
-                        print(f"[FLICKER DEBUG] {self.position}: Slow paint! dt={dt*1000:.1f}ms (expected ~8ms)")
+                if self._paint_count % 150 == 0:  # Log every ~2.5 seconds at 60Hz
+                    if dt > 0.020:  # More than 20ms between paints (should be ~16.7ms for 60Hz)
+                        print(f"[FLICKER DEBUG] {self.position}: Slow paint! dt={dt*1000:.1f}ms (expected ~16.7ms for 60Hz)")
                     if phase_drift > 0.5:  # More than 0.5 radians drift
                         print(f"[FLICKER DEBUG] {self.position}: Phase drift! {phase_drift:.3f} rad, expected={self._expected_phase:.3f}, actual={self._actual_phase:.3f}")
                     
-                    # Calculate and log actual flicker rate
-                    if len(self._paint_intervals) >= 50:  # Need enough samples
-                        mean_interval = np.mean(self._paint_intervals)
-                        actual_rate = 1.0 / mean_interval if mean_interval > 0 else 0
-                        target_rate = self.frequency
-                        rate_error = abs(actual_rate - target_rate)
-                        rate_error_pct = (rate_error / target_rate * 100) if target_rate > 0 else 0
-                        print(f"[FLICKER RATE] {self.position}: Target={target_rate:.2f}Hz, Actual={actual_rate:.2f}Hz, Error={rate_error:.3f}Hz ({rate_error_pct:.1f}%)")
+                    # Calculate and log actual flicker rate from state changes (not paint events)
+                    if len(self._flicker_state_changes) >= 20:  # Need enough state changes (at least 10 cycles)
+                        # Calculate time between state changes (each cycle has 2 state changes: ON->OFF and OFF->ON)
+                        intervals = []
+                        for i in range(1, len(self._flicker_state_changes)):
+                            intervals.append(self._flicker_state_changes[i] - self._flicker_state_changes[i-1])
+                        
+                        if intervals:
+                            # Average interval between state changes, then multiply by 2 to get full cycle period
+                            mean_interval = np.mean(intervals)
+                            cycle_period = mean_interval * 2  # Full cycle = 2 state changes (ON->OFF->ON)
+                            actual_rate = 1.0 / cycle_period if cycle_period > 0 else 0
+                            target_rate = self.frequency
+                            rate_error = abs(actual_rate - target_rate)
+                            rate_error_pct = (rate_error / target_rate * 100) if target_rate > 0 else 0
+                            print(f"[FLICKER RATE] {self.position}: Target={target_rate:.2f}Hz, Actual={actual_rate:.2f}Hz, Error={rate_error:.3f}Hz ({rate_error_pct:.1f}%)")
             
             self._last_paint_time = current_time
         else:
             intensity = 0.0
             self._last_paint_time = None
             self._paint_count = 0
-            self._paint_intervals.clear()
+            self._flicker_state_changes.clear()
+            self._last_flicker_state = None
         
         # Calculate color - EXACTLY match screen calibration FlickerFrequencyDetector.paintEvent
         if self._is_active:
@@ -1234,34 +1251,40 @@ class BCICompositionWindow(QMainWindow):
         """Calculate performance metrics from composition session."""
         metrics = {}
         
-        # Flicker rate accuracy
-        if hasattr(self.top_target, '_paint_intervals') and len(self.top_target._paint_intervals) > 50:
-            top_intervals = self.top_target._paint_intervals
-            top_mean_interval = np.mean(top_intervals)
-            top_actual_rate = 1.0 / top_mean_interval if top_mean_interval > 0 else 0
-            top_target_rate = self.top_target.frequency
-            top_error = abs(top_actual_rate - top_target_rate)
-            top_error_pct = (top_error / top_target_rate * 100) if top_target_rate > 0 else 0
-            metrics['top_flicker'] = {
-                'target_hz': top_target_rate,
-                'actual_hz': top_actual_rate,
-                'error_hz': top_error,
-                'error_pct': top_error_pct
-            }
+        # Flicker rate accuracy - calculate from actual flicker cycles
+        if hasattr(self.top_target, '_flicker_state_changes') and len(self.top_target._flicker_state_changes) >= 20:
+            top_changes = self.top_target._flicker_state_changes
+            intervals = [top_changes[i] - top_changes[i-1] for i in range(1, len(top_changes))]
+            if intervals:
+                mean_interval = np.mean(intervals)
+                cycle_period = mean_interval * 2  # Full cycle = 2 state changes
+                top_actual_rate = 1.0 / cycle_period if cycle_period > 0 else 0
+                top_target_rate = self.top_target.frequency
+                top_error = abs(top_actual_rate - top_target_rate)
+                top_error_pct = (top_error / top_target_rate * 100) if top_target_rate > 0 else 0
+                metrics['top_flicker'] = {
+                    'target_hz': top_target_rate,
+                    'actual_hz': top_actual_rate,
+                    'error_hz': top_error,
+                    'error_pct': top_error_pct
+                }
         
-        if hasattr(self.bottom_target, '_paint_intervals') and len(self.bottom_target._paint_intervals) > 50:
-            bottom_intervals = self.bottom_target._paint_intervals
-            bottom_mean_interval = np.mean(bottom_intervals)
-            bottom_actual_rate = 1.0 / bottom_mean_interval if bottom_mean_interval > 0 else 0
-            bottom_target_rate = self.bottom_target.frequency
-            bottom_error = abs(bottom_actual_rate - bottom_target_rate)
-            bottom_error_pct = (bottom_error / bottom_target_rate * 100) if bottom_target_rate > 0 else 0
-            metrics['bottom_flicker'] = {
-                'target_hz': bottom_target_rate,
-                'actual_hz': bottom_actual_rate,
-                'error_hz': bottom_error,
-                'error_pct': bottom_error_pct
-            }
+        if hasattr(self.bottom_target, '_flicker_state_changes') and len(self.bottom_target._flicker_state_changes) >= 20:
+            bottom_changes = self.bottom_target._flicker_state_changes
+            intervals = [bottom_changes[i] - bottom_changes[i-1] for i in range(1, len(bottom_changes))]
+            if intervals:
+                mean_interval = np.mean(intervals)
+                cycle_period = mean_interval * 2  # Full cycle = 2 state changes
+                bottom_actual_rate = 1.0 / cycle_period if cycle_period > 0 else 0
+                bottom_target_rate = self.bottom_target.frequency
+                bottom_error = abs(bottom_actual_rate - bottom_target_rate)
+                bottom_error_pct = (bottom_error / bottom_target_rate * 100) if bottom_target_rate > 0 else 0
+                metrics['bottom_flicker'] = {
+                    'target_hz': bottom_target_rate,
+                    'actual_hz': bottom_actual_rate,
+                    'error_hz': bottom_error,
+                    'error_pct': bottom_error_pct
+                }
         
         # Classification performance
         if hasattr(self, '_classification_results') and len(self._classification_results) > 0:
@@ -1962,6 +1985,11 @@ class BCICompositionWindow(QMainWindow):
             )
             return
         
+        # Note: CCA works with synthetic references even without calibration
+        # Calibration enhances accuracy but is not required
+        if not self.classifier.is_calibrated:
+            print("[VALIDATION] No calibration loaded - using CCA with synthetic references only")
+        
         # Disable button during validation
         self.validate_btn.setEnabled(False)
         self.status_label.setText("Data validation starting... Get ready!")
@@ -2136,8 +2164,10 @@ class BCICompositionWindow(QMainWindow):
                 print(f"[VALIDATION] Using default frequencies: Top={higher_freq:.2f} Hz, Bottom={lower_freq:.2f} Hz")
             
             # Reset flicker rate tracking
-            self.top_target._paint_intervals.clear()
-            self.bottom_target._paint_intervals.clear()
+            self.top_target._flicker_state_changes.clear()
+            self.bottom_target._flicker_state_changes.clear()
+            self.top_target._last_flicker_state = None
+            self.bottom_target._last_flicker_state = None
             self.top_target._paint_count = 0
             self.bottom_target._paint_count = 0
             
@@ -2243,6 +2273,19 @@ class BCICompositionWindow(QMainWindow):
         try:
             from datetime import datetime
             timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Reset classifier state to ensure clean validation run
+            # This clears any history and resets debug flags
+            self.classifier.reset()
+            # Reset debug counter if it exists
+            if hasattr(self.classifier, '_down_call_count'):
+                self.classifier._down_call_count = 0
+            
+            # Verify calibration is loaded
+            print(f"[VALIDATION] Classifier calibrated: {self.classifier.is_calibrated}")
+            print(f"[VALIDATION] Using calibration: {self.classifier._using_calibration}")
+            if hasattr(self.classifier, '_ref_signals_down'):
+                print(f"[VALIDATION] DOWN ref shape: {self.classifier._ref_signals_down.shape}")
             
             self.status_label.setText("Processing validation data...")
             QApplication.processEvents()
@@ -2431,17 +2474,7 @@ class BCICompositionWindow(QMainWindow):
                                    f"corr_down={result.power_lower_freq:.6f}, pred={result.target.value}, "
                                    f"confidence={result.confidence:.3f}")
             
-            val_logger.info("=" * 60)
-            val_logger.info("VALIDATION SUMMARY")
-            val_logger.info("=" * 60)
-            val_logger.info(f"Top target: {len(top_predictions)} predictions, {top_correct} correct, accuracy={top_accuracy*100:.1f}%")
-            val_logger.info(f"Bottom target: {len(bottom_predictions)} predictions, {bottom_correct} correct, accuracy={bottom_accuracy*100:.1f}%")
-            val_logger.info(f"Overall: {len(top_predictions) + len(bottom_predictions)} total predictions, "
-                          f"{top_correct + bottom_correct} correct, accuracy={overall_accuracy*100:.1f}%")
-            
-            print(f"[VALIDATION] Debug log saved to {log_file}")
-            
-            # Compare against ground truth
+            # Compare against ground truth (calculate BEFORE logging)
             top_correct = sum(1 for p in top_predictions if p['prediction'] == top_ground_truth.value)
             top_accuracy = top_correct / len(top_predictions) if top_predictions else 0.0
             top_mean_confidence = np.mean([p['confidence'] for p in top_predictions]) if top_predictions else 0.0
@@ -2451,6 +2484,16 @@ class BCICompositionWindow(QMainWindow):
             bottom_mean_confidence = np.mean([p['confidence'] for p in bottom_predictions]) if bottom_predictions else 0.0
             
             overall_accuracy = (top_correct + bottom_correct) / (len(top_predictions) + len(bottom_predictions)) if (top_predictions or bottom_predictions) else 0.0
+            
+            val_logger.info("=" * 60)
+            val_logger.info("VALIDATION SUMMARY")
+            val_logger.info("=" * 60)
+            val_logger.info(f"Top target: {len(top_predictions)} predictions, {top_correct} correct, accuracy={top_accuracy*100:.1f}%")
+            val_logger.info(f"Bottom target: {len(bottom_predictions)} predictions, {bottom_correct} correct, accuracy={bottom_accuracy*100:.1f}%")
+            val_logger.info(f"Overall: {len(top_predictions) + len(bottom_predictions)} total predictions, "
+                          f"{top_correct + bottom_correct} correct, accuracy={overall_accuracy*100:.1f}%")
+            
+            print(f"[VALIDATION] Debug log saved to {log_file}")
             
             print(f"[VALIDATION] Top target accuracy: {top_accuracy*100:.1f}% ({top_correct}/{len(top_predictions)})")
             print(f"[VALIDATION] Bottom target accuracy: {bottom_accuracy*100:.1f}% ({bottom_correct}/{len(bottom_predictions)})")

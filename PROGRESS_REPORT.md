@@ -2,6 +2,22 @@
 ## Date: 2026-01-14 (Latest Update)
 
 ### Latest Changes (2026-01-14)
+- ✅ **Simplified CCA to work without calibration** - Removed requirement for subject-specific calibration
+  - CCA now always uses synthetic references (sin/cos at target frequencies)
+  - Subject-specific calibration is optional enhancement, not required
+  - Validation now uses CCA with synthetic references (matches direct test behavior)
+  - Files modified: `src/bci/classifier.py` - `classify_cca()` method, `src/bci/interface.py` - validation check
+
+### Latest Changes (2026-01-14) - SIMPLIFICATION DECISION
+- 🔄 **MAJOR SIMPLIFICATION: Removing screen calibration and subject-specific calibration requirements**
+  - Decision: Overcomplicated the system with screen calibration and subject-specific calibration
+  - New approach: Use fixed 15Hz (0° phase) and 12Hz (180° phase) synthetic references only
+  - Remove dependency on screen calibration system
+  - Keep subject-specific calibration code but make it completely optional (not used by default)
+  - Goal: Simpler, more reliable system that works out of the box
+  - This commit marks the state before simplification for easy rollback if needed
+
+### Previous Changes (2026-01-14)
 - ✅ **Fixed CCA DOWN target classification** - Critical fix for SSVEP classification accuracy
   - Root cause: Padding data with zeros broke phase alignment, especially for DOWN reference (π phase offset)
   - Solution: Resize references to match chunk size instead of padding data (preserves phase profile)

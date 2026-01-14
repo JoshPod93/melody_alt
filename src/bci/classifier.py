@@ -334,8 +334,9 @@ class SSVEPClassifier:
         """
         Classify using Canonical Correlation Analysis (CCA) with 2 harmonics.
         
-        Uses ONLY CCA when calibration is available, FFT otherwise.
-        No mixing - one method only for maximum speed.
+        CCA works with synthetic references (screen-calibrated) even without
+        subject-specific calibration. If calibration is loaded, it enhances
+        the references with subject-specific templates.
         
         This method is used by both:
         - Main live composition (0.3s chunks every 50ms)
@@ -350,110 +351,158 @@ class SSVEPClassifier:
         Returns:
             ClassificationResult
         """
-        # If calibrated, use CCA only (with 2 harmonics in reference signals)
-        if self._using_calibration:
-            # CRITICAL: Use ONLY occipital channels for SSVEP
-            if eeg_data.shape[1] > max(self.occipital_channels):
-                data = eeg_data[:, self.occipital_channels]
-            else:
-                data = eeg_data
-            
-            # Resize reference signals to match data length (preserves phase profile)
-            # This is better than padding data with zeros, which breaks phase alignment
-            n_data = data.shape[0]
-            n_ref = self._ref_signals_up.shape[0]
-            
-            if n_data != n_ref:
-                # Resize references to match data chunk size (preserves phase)
-                ref_up_resized = self._resize_reference(self._ref_signals_up, n_data)
-                ref_down_resized = self._resize_reference(self._ref_signals_down, n_data)
-            else:
-                ref_up_resized = self._ref_signals_up
-                ref_down_resized = self._ref_signals_down
-            
-            # Compute CCA correlation for each target using resized references
-            # References include synthetic (screen-calibrated) + calibrated (subject-specific) if available
-            try:
-                corr_up = self._cca_correlation(data, ref_up_resized)
-            except Exception as e:
-                print(f"[CCA ERROR] Failed UP correlation: {e}")
-                print(f"  data.shape={data.shape}, ref_up.shape={ref_up_resized.shape}")
-                corr_up = 0.0
-            
-            try:
-                corr_down = self._cca_correlation(data, ref_down_resized)
-                # Debug: Check if DOWN correlation is suspiciously zero
-                if corr_down < 1e-6:
-                    print(f"[CCA WARNING] DOWN correlation is near zero: {corr_down:.6f}")
-                    print(f"  data.shape={data.shape}, ref_down.shape={ref_down_resized.shape}")
-                    print(f"  ref_down stats: min={np.min(ref_down_resized):.6f}, max={np.max(ref_down_resized):.6f}, "
-                          f"mean={np.mean(ref_down_resized):.6f}, var={np.var(ref_down_resized, axis=0)[:3]}")
-            except Exception as e:
-                print(f"[CCA ERROR] Failed DOWN correlation: {e}")
-                print(f"  data.shape={data.shape}, ref_down.shape={ref_down_resized.shape}")
-                import traceback
-                traceback.print_exc()
-                corr_down = 0.0
-            
-            # DEBUG: Log all CCA correlations to file for validation analysis
-            import logging
-            import time
+        # CRITICAL: Use ONLY occipital channels for SSVEP
+        if eeg_data.shape[1] > max(self.occipital_channels):
+            data = eeg_data[:, self.occipital_channels]
+        else:
+            data = eeg_data
+        
+        # Resize reference signals to match data length (preserves phase profile)
+        # This is better than padding data with zeros, which breaks phase alignment
+        n_data = data.shape[0]
+        n_ref = self._ref_signals_up.shape[0]
+        
+        if n_data != n_ref:
+            # Resize references to match data chunk size (preserves phase)
+            ref_up_resized = self._resize_reference(self._ref_signals_up, n_data)
+            ref_down_resized = self._resize_reference(self._ref_signals_down, n_data)
+        else:
+            ref_up_resized = self._ref_signals_up
+            ref_down_resized = self._ref_signals_down
+        
+        # Compute CCA correlation for each target using resized references
+        # References include synthetic (screen-calibrated) + calibrated (subject-specific) if available
+        try:
+            corr_up = self._cca_correlation(data, ref_up_resized)
+        except Exception as e:
+            print(f"[CCA ERROR] Failed UP correlation: {e}")
+            print(f"  data.shape={data.shape}, ref_up.shape={ref_up_resized.shape}")
+            corr_up = 0.0
+        
+        # ALWAYS log first few calls to diagnose issue
+        if not hasattr(self, '_down_call_count'):
+            self._down_call_count = 0
+        
+        self._down_call_count += 1
+        
+        # Log first 3 calls ALWAYS
+        if self._down_call_count <= 3:
+            import sys
             from pathlib import Path
             
-            # Set up logger for CCA debug info
-            if not hasattr(self, '_cca_logger_initialized'):
-                log_file = Path("validation_plots") / "cca_debug.log"
+            log_msg = (f"[CCA DEBUG] Call #{self._down_call_count} - DOWN correlation attempt\n"
+                      f"  data.shape={data.shape}, ref_down.shape={ref_down_resized.shape}\n"
+                      f"  ref_down stats: min={np.min(ref_down_resized):.6f}, max={np.max(ref_down_resized):.6f}, "
+                      f"mean={np.mean(ref_down_resized):.6f}, var={np.var(ref_down_resized, axis=0)[:3]}\n"
+                      f"  data stats: min={np.min(data):.6f}, max={np.max(data):.6f}, mean={np.mean(data):.6f}")
+            
+            print(log_msg, file=sys.stderr, flush=True)
+            
+            # Also log to file
+            log_file = Path("validation_plots") / "cca_diagnostic.log"
+            log_file.parent.mkdir(exist_ok=True)
+            with open(log_file, 'a') as f:
+                f.write(f"{log_msg}\n")
+        
+        try:
+            corr_down = self._cca_correlation(data, ref_down_resized)
+            
+            # Debug: ALWAYS log if DOWN correlation is zero (should happen for every chunk)
+            if corr_down < 1e-6:
+                import sys
+                from pathlib import Path
+                
+                log_msg = (f"[CCA WARNING] Call #{self._down_call_count} - DOWN correlation is near zero: {corr_down:.6f}\n"
+                          f"  data.shape={data.shape}, ref_down.shape={ref_down_resized.shape}\n"
+                          f"  ref_down stats: min={np.min(ref_down_resized):.6f}, max={np.max(ref_down_resized):.6f}, "
+                          f"mean={np.mean(ref_down_resized):.6f}, var={np.var(ref_down_resized, axis=0)[:3]}\n"
+                          f"  data stats: min={np.min(data):.6f}, max={np.max(data):.6f}, mean={np.mean(data):.6f}")
+                
+                print(log_msg, file=sys.stderr, flush=True)
+                
+                # Also log to file
+                log_file = Path("validation_plots") / "cca_diagnostic.log"
                 log_file.parent.mkdir(exist_ok=True)
-                
-                # Create logger
-                self._cca_logger = logging.getLogger('cca_debug')
-                self._cca_logger.setLevel(logging.DEBUG)
-                self._cca_logger.handlers.clear()  # Clear any existing handlers
-                
-                # File handler
-                fh = logging.FileHandler(log_file, mode='a')
-                fh.setLevel(logging.DEBUG)
-                formatter = logging.Formatter('%(asctime)s - %(message)s')
-                fh.setFormatter(formatter)
-                self._cca_logger.addHandler(fh)
-                
-                self._cca_logger_initialized = True
-                self._cca_log_count = 0
+                with open(log_file, 'a') as f:
+                    f.write(f"{log_msg}\n")
+        except Exception as e:
+            import sys
+            import traceback
+            from pathlib import Path
             
-            # Log every correlation (useful for validation)
-            self._cca_log_count += 1
-            self._cca_logger.debug(
-                f"CCA#{self._cca_log_count}: corr_up={corr_up:.6f}, corr_down={corr_down:.6f}, "
-                f"diff={corr_up - corr_down:.6f}, "
-                f"UP_freq={self.target_frequencies[0]:.2f}Hz, DOWN_freq={self.target_frequencies[1]:.2f}Hz, "
-                f"prediction={'UP' if corr_up > corr_down else 'DOWN'}, "
-                f"data_shape={data.shape}, ref_up_shape={ref_up_resized.shape}, ref_down_shape={ref_down_resized.shape}"
-            )
+            error_msg = (f"[CCA ERROR] Call #{self._down_call_count} - Failed DOWN correlation: {e}\n"
+                        f"  data.shape={data.shape}, ref_down.shape={ref_down_resized.shape}\n")
+            error_trace = traceback.format_exc()
             
-            # CCA correlation difference
-            cca_diff = corr_up - corr_down
-            score = np.sign(cca_diff) * min(abs(cca_diff) * 3, 1)
+            print(error_msg, file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
             
-            # Confidence based on magnitude
-            confidence = min(abs(score) * 1.5, 1.0)
-            confidence = max(confidence, 0.2)  # Minimum confidence
+            # Also log to file
+            log_file = Path("validation_plots") / "cca_diagnostic.log"
+            log_file.parent.mkdir(exist_ok=True)
+            with open(log_file, 'a') as f:
+                f.write(f"{error_msg}\n{error_trace}\n")
             
-            # Direction based on CCA score
-            if score >= 0:
-                target = AttentionTarget.UP
-            else:
-                target = AttentionTarget.DOWN
+            corr_down = 0.0
+        
+        # DEBUG: Log all CCA correlations to file for validation analysis
+        import logging
+        import time
+        from pathlib import Path
+        
+        # Set up logger for CCA debug info
+        if not hasattr(self, '_cca_logger_initialized'):
+            log_file = Path("validation_plots") / "cca_debug.log"
+            log_file.parent.mkdir(exist_ok=True)
             
-            return ClassificationResult(
-                target=target,
-                confidence=confidence,
-                power_higher_freq=corr_up,
-                power_lower_freq=corr_down,
-                raw_score=score
-            )
+            # Create logger
+            self._cca_logger = logging.getLogger('cca_debug')
+            self._cca_logger.setLevel(logging.DEBUG)
+            self._cca_logger.handlers.clear()  # Clear any existing handlers
+            
+            # File handler
+            fh = logging.FileHandler(log_file, mode='a')
+            fh.setLevel(logging.DEBUG)
+            formatter = logging.Formatter('%(asctime)s - %(message)s')
+            fh.setFormatter(formatter)
+            self._cca_logger.addHandler(fh)
+            
+            self._cca_logger_initialized = True
+            self._cca_log_count = 0
+        
+        # Log every correlation (useful for validation)
+        self._cca_log_count += 1
+        self._cca_logger.debug(
+            f"CCA#{self._cca_log_count}: corr_up={corr_up:.6f}, corr_down={corr_down:.6f}, "
+            f"diff={corr_up - corr_down:.6f}, "
+            f"UP_freq={self.target_frequencies[0]:.2f}Hz, DOWN_freq={self.target_frequencies[1]:.2f}Hz, "
+            f"prediction={'UP' if corr_up > corr_down else 'DOWN'}, "
+            f"data_shape={data.shape}, ref_up_shape={ref_up_resized.shape}, ref_down_shape={ref_down_resized.shape}, "
+            f"using_calibration={self._using_calibration}"
+        )
+        
+        # CCA correlation difference
+        cca_diff = corr_up - corr_down
+        score = np.sign(cca_diff) * min(abs(cca_diff) * 3, 1)
+        
+        # Confidence based on magnitude
+        confidence = min(abs(score) * 1.5, 1.0)
+        confidence = max(confidence, 0.2)  # Minimum confidence
+        
+        # Direction based on CCA score
+        if score >= 0:
+            target = AttentionTarget.UP
         else:
-            # Not calibrated: use FFT only
-            return self.classify_fft(eeg_data)
+            target = AttentionTarget.DOWN
+        
+        return ClassificationResult(
+            target=target,
+            confidence=confidence,
+            power_higher_freq=corr_up,
+            power_lower_freq=corr_down,
+            raw_score=score
+        )
     
     def _cca_correlation(
         self,
@@ -488,13 +537,15 @@ class SSVEPClassifier:
         try:
             # Check for invalid inputs
             if Y.shape[1] == 0:
-                print(f"[CCA WARNING] Empty reference signals! Y.shape={Y.shape}")
+                import sys
+                print(f"[CCA WARNING] Empty reference signals! Y.shape={Y.shape}", file=sys.stderr, flush=True)
                 return 0.0
             
             # Check if Y has zero variance (all same values)
             Y_var = np.var(Y, axis=0)
             if np.all(Y_var < 1e-10):
-                print(f"[CCA WARNING] Reference signals have zero variance! Y_var={Y_var}")
+                import sys
+                print(f"[CCA WARNING] Reference signals have zero variance! Y_var={Y_var}", file=sys.stderr, flush=True)
                 return 0.0
             
             # Solve generalized eigenvalue problem
@@ -510,12 +561,22 @@ class SSVEPClassifier:
             
             # Debug: Log if correlation is suspiciously low
             if corr < 1e-6:
-                print(f"[CCA WARNING] Very low correlation: {corr:.6f}, Y.shape={Y.shape}, Y_var={Y_var[:3]}")
+                import sys
+                print(f"[CCA WARNING] Very low correlation: {corr:.6f}, Y.shape={Y.shape}, Y_var={Y_var[:3]}", file=sys.stderr, flush=True)
             
             return corr
         except np.linalg.LinAlgError as e:
-            print(f"[CCA ERROR] Linear algebra error: {e}, X.shape={X.shape}, Y.shape={Y.shape}")
-            print(f"  Y stats: mean={np.mean(Y, axis=0)[:3]}, var={np.var(Y, axis=0)[:3]}")
+            import sys
+            print(f"[CCA ERROR] Linear algebra error: {e}, X.shape={X.shape}, Y.shape={Y.shape}", file=sys.stderr, flush=True)
+            print(f"  Y stats: mean={np.mean(Y, axis=0)[:3]}, var={np.var(Y, axis=0)[:3]}", file=sys.stderr, flush=True)
+            return 0.0
+        except Exception as e:
+            import sys
+            import traceback
+            print(f"[CCA ERROR] Unexpected error in _cca_correlation: {e}", file=sys.stderr, flush=True)
+            print(f"  X.shape={X.shape}, Y.shape={Y.shape}", file=sys.stderr, flush=True)
+            traceback.print_exc(file=sys.stderr)
+            sys.stderr.flush()
             return 0.0
     
     def classify(
