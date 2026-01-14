@@ -109,12 +109,19 @@ class P300FlashWidget(QWidget):
         else:
             is_flashing = False
         
-        # Choose color
-        color = self.color_on if is_flashing else self.color_off
+        # Get color from target (returns RGB tuple)
+        color_tuple = self.target.get_color()
+        
+        # Convert to QColor
+        if isinstance(color_tuple, tuple) and len(color_tuple) == 3:
+            color = QColor(*color_tuple)
+        else:
+            # Fallback to default colors
+            color = self.color_on if is_flashing else self.color_off
         
         # Draw rectangle
         rect = self.rect()
-        painter.fillRect(rect, QColor(*color))
+        painter.fillRect(rect, color)
         
         # Draw border
         painter.setPen(QPen(self.border_color, 2))
