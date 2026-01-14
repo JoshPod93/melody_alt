@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 import time
+import json
 import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -232,12 +233,11 @@ class FlickerWidget(QWidget):
             # This ensures frame-synchronized rendering regardless of timer updates
             intensity = self.target.get_intensity(None)  # None triggers internal time calculation
             
-            # Calculate actual phase from intensity (inverse of intensity calculation)
-            # intensity = (sin(phase) + 1) / 2, so phase = arcsin(2*intensity - 1)
-            if 0 < intensity < 1:
-                self._actual_phase = np.arcsin(2 * intensity - 1)
-            else:
-                self._actual_phase = 0.0 if intensity <= 0 else np.pi
+            # Calculate actual phase directly from time (same as expected, but using target's internal calculation)
+            # This is more accurate than trying to invert intensity, which loses quadrant information
+            # The target calculates: phase = 2*π*f*t + phase_offset
+            target_elapsed = time.perf_counter() - self.target._start_time
+            self._actual_phase = (2 * np.pi * self.frequency * target_elapsed + self.phase_offset) % (2 * np.pi)
             
             # Determine current flicker state (ON or OFF) - track actual flicker cycles, not paint events
             current_state = FlickerState.ON if intensity > 0.5 else FlickerState.OFF
@@ -1065,11 +1065,15 @@ class BCICompositionWindow(QMainWindow):
             
             if len(processed) > 0:
                 # Use shorter window for faster classification (0.3s instead of 0.5s)
-                # get_recent_data now returns occipital channels only (PO7, Oz, PO8)
-                eeg_buffer = self.preprocessor.get_recent_data(0.3)
-                # Use CCA - it's more robust with proper phase-matched references
-                # Classifier expects occipital channels only (already handled by preprocessor)
-                result = self.classifier.classify(eeg_buffer, method="cca")
+                # For FBCCA, use minimal preprocessing (CAR + notch only, no bandpass)
+                # For regular CCA, use full preprocessing (CAR + notch + bandpass)
+                use_fbcca = True  # Switch to FBCCA for better accuracy
+                if use_fbcca:
+                    eeg_buffer = self.preprocessor.get_recent_data_minimal(0.3)
+                    result = self.classifier.classify(eeg_buffer, method="fbcca")
+                else:
+                    eeg_buffer = self.preprocessor.get_recent_data(0.3)
+                    result = self.classifier.classify(eeg_buffer, method="cca")
                 
                 # Track classification metrics
                 classify_time = time.perf_counter()
@@ -1969,15 +1973,24 @@ class BCICompositionWindow(QMainWindow):
     def _run_data_validation(self) -> None:
         """Execute the structured data validation test with classification."""
         try:
-            # Clear validation_plots folder at start
+            # Clear validation_plots folder at start (ensures clean state for each run)
             validation_dir = Path("validation_plots")
             if validation_dir.exists():
-                for file in validation_dir.glob("*"):
+                # Remove all files (including subdirectories recursively)
+                for file in validation_dir.rglob("*"):
                     try:
-                        file.unlink()
-                        print(f"[VALIDATION] Cleared old file: {file.name}")
+                        if file.is_file():
+                            file.unlink()
+                            print(f"[VALIDATION] Cleared old file: {file.name}")
+                        elif file.is_dir():
+                            file.rmdir()  # Remove empty directories
                     except Exception as e:
                         print(f"[VALIDATION] Warning: Could not delete {file}: {e}")
+                print(f"[VALIDATION] Cleared validation_plots folder")
+            else:
+                # Create folder if it doesn't exist
+                validation_dir.mkdir(exist_ok=True)
+                print(f"[VALIDATION] Created validation_plots folder")
             
             # Protocol timings
             baseline_duration = 2.0  # 2 seconds baseline (flickering active, no indicator)
@@ -2499,6 +2512,69 @@ class BCICompositionWindow(QMainWindow):
             if bottom_template is not None:
                 np.save(validation_dir / f"bottom_template_{timestamp_str}.npy", bottom_template)
             
+            # Save RAW EEG data for offline testing of different preprocessing/classification approaches
+            # This allows testing without running the GUI every time
+            top_raw_shape = None
+            bottom_raw_shape = None
+            baseline_raw_shape = None
+            
+            if hasattr(self, '_validation_top_target_data') and self._validation_top_target_data.get('raw'):
+                top_raw = np.vstack(self._validation_top_target_data['raw'])
+                np.save(validation_dir / f"top_raw_{timestamp_str}.npy", top_raw)
+                top_raw_shape = list(top_raw.shape)
+                print(f"[VALIDATION] Saved raw top target data: {top_raw.shape} samples")
+            
+            if hasattr(self, '_validation_bottom_target_data') and self._validation_bottom_target_data.get('raw'):
+                bottom_raw = np.vstack(self._validation_bottom_target_data['raw'])
+                np.save(validation_dir / f"bottom_raw_{timestamp_str}.npy", bottom_raw)
+                bottom_raw_shape = list(bottom_raw.shape)
+                print(f"[VALIDATION] Saved raw bottom target data: {bottom_raw.shape} samples")
+            
+            if hasattr(self, '_validation_baseline_data') and self._validation_baseline_data:
+                baseline_raw = np.vstack(self._validation_baseline_data)
+                np.save(validation_dir / f"baseline_raw_{timestamp_str}.npy", baseline_raw)
+                baseline_raw_shape = list(baseline_raw.shape)
+                print(f"[VALIDATION] Saved raw baseline data: {baseline_raw.shape} samples")
+            
+            # Save metadata for easy loading
+            metadata = {
+                'timestamp': timestamp_str,
+                'sample_rate': float(self.preprocessor.sample_rate),
+                'window_seconds': 0.3,
+                'update_interval_seconds': 0.050,
+                'target_frequencies': {
+                    'top': float(self.top_target.frequency),
+                    'bottom': float(self.bottom_target.frequency)
+                },
+                'target_phases': {
+                    'top': float(self.top_target.phase_offset),
+                    'bottom': float(self.bottom_target.phase_offset)
+                },
+                'top_raw_shape': top_raw_shape,
+                'bottom_raw_shape': bottom_raw_shape,
+                'baseline_raw_shape': baseline_raw_shape,
+                'top_processed_shape': list(top_processed.shape),
+                'bottom_processed_shape': list(bottom_processed.shape),
+                'n_channels': top_processed.shape[1] if len(top_processed) > 0 else 0,
+                'occipital_channels': self.classifier.occipital_channels,
+                'preprocessing': {
+                    'bandpass_low': float(self.preprocessor.bandpass_low),
+                    'bandpass_high': float(self.preprocessor.bandpass_high),
+                    'notch_freq': float(self.preprocessor.notch_freq),
+                    'use_car': self.preprocessor.use_car,
+                },
+                'classifier': {
+                    'n_harmonics': self.classifier.n_harmonics,
+                    'target_frequencies': list(self.classifier.target_frequencies),
+                    'target_phases': list(self.classifier.target_phases),
+                }
+            }
+            
+            metadata_file = validation_dir / f"validation_metadata_{timestamp_str}.json"
+            with open(metadata_file, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            print(f"[VALIDATION] Saved metadata: {metadata_file}")
+            
             # Create comprehensive report
             report = {
                 'timestamp': timestamp_str,
@@ -2539,7 +2615,6 @@ class BCICompositionWindow(QMainWindow):
             }
             
             # Save report
-            import json
             report_file = validation_dir / f"validation_report_{timestamp_str}.json"
             with open(report_file, 'w') as f:
                 json.dump(report, f, indent=2)

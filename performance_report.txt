@@ -1,0 +1,24 @@
+============================================================
+PERFORMANCE REPORT - During Live Data Capture + Preprocessing + Classification
+============================================================
+Generated: 2026-01-14 14:50:57
+============================================================
+
+Top Flicker Rate:
+  Target: 15.000 Hz
+  Actual: 15.013 Hz
+  Error:  0.013 Hz (0.1%)
+
+Bottom Flicker Rate:
+  Target: 12.000 Hz
+  Actual: 12.002 Hz
+  Error:  0.002 Hz (0.0%)
+
+Classification Performance:
+  Total classifications: 157
+  Classification rate: 15.7 Hz
+  Mean confidence: 0.579
+  Target distribution:
+    UP: 60 (38.2%)
+    DOWN: 97 (61.8%)
+    NONE: 0 (0.0%)

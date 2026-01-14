@@ -1,0 +1,36 @@
+[CCA DEBUG] Call #1 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-1.532888, max=1.491633, mean=0.024007
+[CCA DEBUG] Call #2 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-1.168501, max=1.491633, mean=0.001372
+[CCA DEBUG] Call #3 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-1.168501, max=1.491633, mean=-0.001446
+[CCA DEBUG] Call #1 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-9.929820, max=10.000000, mean=0.019168
+[CCA DEBUG] Call #2 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-9.929820, max=4.964875, mean=-0.349377
+[CCA DEBUG] Call #3 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-2.770929, max=4.964875, mean=0.150712
+[CCA DEBUG] Call #1 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-9.929820, max=10.000000, mean=0.019168
+[CCA DEBUG] Call #2 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-9.929820, max=4.964875, mean=-0.349377
+[CCA DEBUG] Call #3 - DOWN correlation attempt
+  data.shape=(75, 3), ref_down.shape=(75, 4)
+  ref_down stats: min=-1.000000, max=1.000000, mean=-0.000185, var=[0.48984077 0.4952951  0.46260076]
+  data stats: min=-2.770929, max=4.964875, mean=0.150712

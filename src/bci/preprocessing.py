@@ -64,8 +64,8 @@ class EEGPreprocessor:
     """
     sample_rate: float = 256.0
     n_channels: int = 8
-    bandpass_low: float = 10.0   # Lower cutoff: remove low-freq noise/drift, keep SSVEP signals (11-15 Hz)
-    bandpass_high: float = 32.0  # Upper cutoff: include harmonics up to 30 Hz (with margin)
+    bandpass_low: float = 11.0   # Lower cutoff: focus on SSVEP range (12-15 Hz), reduce noise
+    bandpass_high: float = 30.0  # Upper cutoff: include harmonics up to 30 Hz (15Hz*2, 12Hz*2)
     notch_freq: float = 50.0     # 50Hz for EU, 60Hz for US
     buffer_seconds: float = 2.0   # 2 second rolling buffer
     use_car: bool = True  # Common Average Reference - CRITICAL for SSVEP signal quality
@@ -80,12 +80,28 @@ class EEGPreprocessor:
     _buffer: deque = field(init=False, repr=False)
     _buffer_size: int = field(init=False, repr=False)
     
+    # Raw buffer (CAR + notch only, no bandpass) for FBCCA
+    _raw_buffer: deque = field(init=False, repr=False)
+    use_fbcca: bool = False  # If True, skip main bandpass (filter banks handle it)
+    
     # Filter states for real-time filtering (per channel)
     _bp_zi: List[NDArray] = field(init=False, repr=False)
     _notch_zi: List[NDArray] = field(init=False, repr=False)
     
-    # Artifact detection threshold (in standard deviations)
-    artifact_threshold: float = 5.0
+    # Artifact detection thresholds
+    artifact_threshold: float = 5.0  # Amplitude-based artifact threshold (std devs)
+    muscle_artifact_threshold: float = 0.3  # High-freq power threshold (normalized)
+    blink_threshold: float = 3.0  # Low-freq transient threshold (std devs)
+    
+    # Physics-based denoising filters
+    _muscle_filter: Optional[FilterCoefficients] = field(init=False, repr=False, default=None)
+    _blink_filter: Optional[FilterCoefficients] = field(init=False, repr=False, default=None)
+    _muscle_filter_zi: List[NDArray] = field(init=False, repr=False)
+    _blink_filter_zi: List[NDArray] = field(init=False, repr=False)
+    
+    # Enable/disable physics-based denoising
+    enable_muscle_artifact_detection: bool = True
+    enable_blink_detection: bool = True
     
     # Running statistics for normalization
     _running_mean: NDArray[np.float64] = field(init=False, repr=False)
@@ -131,6 +147,39 @@ class EEGPreprocessor:
             signal.lfilter_zi(self._notch_filter.b, self._notch_filter.a)
             for _ in range(self.n_channels)
         ]
+        
+        # Initialize physics-based denoising filters
+        if self.enable_muscle_artifact_detection:
+            # High-frequency filter for muscle artifacts (30-100 Hz)
+            muscle_low = 30.0 / nyquist
+            muscle_high = min(100.0 / nyquist, 0.99)
+            muscle_low = max(0.001, min(muscle_low, 0.99))
+            muscle_high = max(muscle_low + 0.01, min(muscle_high, 0.99))
+            b_muscle, a_muscle = signal.butter(4, [muscle_low, muscle_high], btype='band')
+            self._muscle_filter = FilterCoefficients(b=b_muscle, a=a_muscle)
+            self._muscle_filter_zi = [
+                signal.lfilter_zi(b_muscle, a_muscle)
+                for _ in range(self.n_channels)
+            ]
+        else:
+            self._muscle_filter = None
+            self._muscle_filter_zi = []
+        
+        if self.enable_blink_detection:
+            # Low-frequency filter for eye blinks (0.5-4 Hz)
+            blink_low = 0.5 / nyquist
+            blink_high = 4.0 / nyquist
+            blink_low = max(0.001, min(blink_low, 0.99))
+            blink_high = max(blink_low + 0.01, min(blink_high, 0.99))
+            b_blink, a_blink = signal.butter(4, [blink_low, blink_high], btype='band')
+            self._blink_filter = FilterCoefficients(b=b_blink, a=a_blink)
+            self._blink_filter_zi = [
+                signal.lfilter_zi(b_blink, a_blink)
+                for _ in range(self.n_channels)
+            ]
+        else:
+            self._blink_filter = None
+            self._blink_filter_zi = []
     
     def _init_buffer(self) -> None:
         """Initialize rolling buffer."""
@@ -152,6 +201,17 @@ class EEGPreprocessor:
         self._init_filters()
         self._init_buffer()
         self._init_statistics()
+        # Reset physics-based filter states
+        if self.enable_muscle_artifact_detection and self._muscle_filter is not None:
+            self._muscle_filter_zi = [
+                signal.lfilter_zi(self._muscle_filter.b, self._muscle_filter.a)
+                for _ in range(self.n_channels)
+            ]
+        if self.enable_blink_detection and self._blink_filter is not None:
+            self._blink_filter_zi = [
+                signal.lfilter_zi(self._blink_filter.b, self._blink_filter.a)
+                for _ in range(self.n_channels)
+            ]
     
     def process_sample(self, sample: NDArray[np.float64]) -> NDArray[np.float64]:
         """
@@ -237,30 +297,59 @@ class EEGPreprocessor:
             car_reference = np.mean(chunk, axis=1, keepdims=True)  # Shape: (n_samples, 1)
             chunk = chunk - car_reference  # Subtract CAR from each channel
         
+        # STEP 1.5: Physics-based artifact detection (on raw referenced data)
+        # Detect artifacts before filtering to avoid corrupting filter states
+        muscle_artifacts = self.detect_muscle_artifact(chunk) if self.enable_muscle_artifact_detection else np.zeros(chunk.shape[0], dtype=bool)
+        blink_artifacts = self.detect_blink_artifact(chunk) if self.enable_blink_detection else np.zeros(chunk.shape[0], dtype=bool)
+        artifact_mask = muscle_artifacts | blink_artifacts
+        
         filtered = np.zeros_like(chunk)
+        raw_filtered = np.zeros_like(chunk)  # For FBCCA (CAR + notch only)
         
         # STEP 2: Apply filters channel by channel (but vectorized per channel)
         for ch in range(self.n_channels):
-            # Bandpass filter entire channel at once
-            bp_out, self._bp_zi[ch] = signal.lfilter(
-                self._bandpass_filter.b,
-                self._bandpass_filter.a,
-                chunk[:, ch],
-                zi=self._bp_zi[ch]
-            )
-            
-            # Notch filter entire channel at once
+            # Notch filter first (needed for both paths)
             notch_out, self._notch_zi[ch] = signal.lfilter(
                 self._notch_filter.b,
                 self._notch_filter.a,
-                bp_out,
+                chunk[:, ch],
                 zi=self._notch_zi[ch]
             )
             
-            filtered[:, ch] = notch_out
+            # Store CAR + notch only for FBCCA
+            raw_filtered[:, ch] = notch_out
+            
+            # Bandpass filter (only if not using FBCCA)
+            if not self.use_fbcca:
+                bp_out, self._bp_zi[ch] = signal.lfilter(
+                    self._bandpass_filter.b,
+                    self._bandpass_filter.a,
+                    notch_out,
+                    zi=self._bp_zi[ch]
+                )
+                filtered[:, ch] = bp_out
+            else:
+                # For FBCCA, skip bandpass - filter banks handle it
+                filtered[:, ch] = notch_out
         
-        # Update statistics in batch (more efficient)
-        for sample in filtered:
+        # STEP 3: Artifact rejection - replace artifact samples with interpolated values
+        if np.any(artifact_mask):
+            # Interpolate artifact samples using neighboring clean samples
+            for ch in range(self.n_channels):
+                artifact_indices = np.where(artifact_mask)[0]
+                if len(artifact_indices) > 0:
+                    # Simple forward-fill for artifacts (use last clean value)
+                    for idx in artifact_indices:
+                        if idx > 0:
+                            filtered[idx, ch] = filtered[idx - 1, ch]
+                        elif idx < len(filtered) - 1:
+                            filtered[idx, ch] = filtered[idx + 1, ch]
+                        else:
+                            filtered[idx, ch] = 0.0
+        
+        # Update statistics in batch (more efficient) - skip artifact samples
+        clean_samples = filtered[~artifact_mask] if np.any(artifact_mask) else filtered
+        for sample in clean_samples:
             self._update_statistics(sample)
         
         # Normalize in batch
@@ -271,6 +360,15 @@ class EEGPreprocessor:
         # Add to buffer
         for sample in normalized:
             self._buffer.append(sample)
+        
+        # Also store raw (CAR + notch only, normalized) for FBCCA
+        # Normalize raw_filtered using same statistics
+        if hasattr(self, '_raw_buffer'):
+            std = np.sqrt(self._running_var + 1e-8)
+            raw_normalized = (raw_filtered - self._running_mean) / std
+            raw_normalized = np.clip(raw_normalized, -10, 10)
+            for sample in raw_normalized:
+                self._raw_buffer.append(sample)
         
         return normalized
     
@@ -305,7 +403,7 @@ class EEGPreprocessor:
     
     def detect_artifact(self, sample: NDArray[np.float64]) -> bool:
         """
-        Detect if a sample contains artifacts.
+        Detect if a sample contains artifacts using amplitude threshold.
         
         Args:
             sample: Normalized sample
@@ -314,6 +412,87 @@ class EEGPreprocessor:
             True if artifact detected
         """
         return np.any(np.abs(sample) > self.artifact_threshold)
+    
+    def detect_muscle_artifact(self, raw_chunk: NDArray[np.float64]) -> NDArray[np.bool_]:
+        """
+        Detect muscle artifacts using high-frequency power (30-100 Hz).
+        
+        Muscle artifacts manifest as high-frequency noise (>30 Hz) that's
+        not part of SSVEP harmonics.
+        
+        Args:
+            raw_chunk: Raw EEG chunk (n_samples, n_channels) - before bandpass
+            
+        Returns:
+            Boolean array (n_samples,) indicating muscle artifacts
+        """
+        if not self.enable_muscle_artifact_detection or self._muscle_filter is None:
+            return np.zeros(raw_chunk.shape[0], dtype=bool)
+        
+        muscle_power = np.zeros(raw_chunk.shape[0])
+        
+        for ch in range(self.n_channels):
+            # Apply high-frequency filter
+            muscle_signal, self._muscle_filter_zi[ch] = signal.lfilter(
+                self._muscle_filter.b,
+                self._muscle_filter.a,
+                raw_chunk[:, ch],
+                zi=self._muscle_filter_zi[ch]
+            )
+            # Compute power (RMS) in sliding window
+            window_size = int(0.1 * self.sample_rate)  # 100ms window
+            if window_size < raw_chunk.shape[0]:
+                for i in range(raw_chunk.shape[0] - window_size):
+                    window_power = np.mean(muscle_signal[i:i+window_size]**2)
+                    muscle_power[i + window_size // 2] = max(muscle_power[i + window_size // 2], window_power)
+            else:
+                muscle_power = np.mean(muscle_signal**2)
+        
+        # Normalize by channel variance
+        channel_vars = np.var(raw_chunk, axis=0, ddof=1)
+        avg_var = np.mean(channel_vars) if len(channel_vars) > 0 else 1.0
+        normalized_power = muscle_power / (avg_var + 1e-8)
+        
+        # Threshold: muscle artifacts have high normalized power
+        return normalized_power > self.muscle_artifact_threshold
+    
+    def detect_blink_artifact(self, raw_chunk: NDArray[np.float64]) -> NDArray[np.bool_]:
+        """
+        Detect eye blink artifacts using low-frequency transients (0.5-4 Hz).
+        
+        Eye blinks manifest as large low-frequency deflections, especially
+        in frontal channels. For SSVEP, we focus on occipital channels but
+        can still detect blinks that affect all channels.
+        
+        Args:
+            raw_chunk: Raw EEG chunk (n_samples, n_channels) - before bandpass
+            
+        Returns:
+            Boolean array (n_samples,) indicating blink artifacts
+        """
+        if not self.enable_blink_detection or self._blink_filter is None:
+            return np.zeros(raw_chunk.shape[0], dtype=bool)
+        
+        blink_signal = np.zeros(raw_chunk.shape[0])
+        
+        for ch in range(self.n_channels):
+            # Apply low-frequency filter
+            blink_ch, self._blink_filter_zi[ch] = signal.lfilter(
+                self._blink_filter.b,
+                self._blink_filter.a,
+                raw_chunk[:, ch],
+                zi=self._blink_filter_zi[ch]
+            )
+            # Use maximum absolute value across channels
+            blink_signal = np.maximum(blink_signal, np.abs(blink_ch))
+        
+        # Normalize by channel std dev
+        channel_stds = np.std(raw_chunk, axis=0, ddof=1)
+        avg_std = np.mean(channel_stds) if len(channel_stds) > 0 else 1.0
+        normalized_blink = blink_signal / (avg_std + 1e-8)
+        
+        # Threshold: blinks have large normalized deflections
+        return normalized_blink > self.blink_threshold
     
     def get_buffer(self) -> NDArray[np.float64]:
         """
@@ -335,6 +514,33 @@ class EEGPreprocessor:
             Array of shape (buffer_size,)
         """
         return np.array([s[channel] for s in self._buffer])
+    
+    def get_recent_data_minimal(self, seconds: float) -> NDArray[np.float64]:
+        """
+        Get recent data with minimal preprocessing (CAR + notch only, NO bandpass).
+        
+        Used for Filter Bank CCA where filter banks handle frequency selection.
+        Gets data from _raw_buffer which stores CAR + notch only.
+        
+        Args:
+            seconds: How many seconds of data to retrieve
+            
+        Returns:
+            Data array of shape (n_samples, 3) - occipital channels only (PO7, Oz, PO8)
+        """
+        n_samples = min(int(seconds * self.sample_rate), self._buffer_size)
+        buffer_array = np.array(list(self._raw_buffer))
+        data = buffer_array[-n_samples:]
+        
+        # Extract only occipital channels (PO7, Oz, PO8 = indices 5, 6, 7)
+        if len(data) > 0 and data.shape[1] >= 8:
+            occipital_indices = [5, 6, 7]
+            return data[:, occipital_indices]
+        elif len(data) > 0 and data.shape[1] == 3:
+            # Already occipital channels
+            return data
+        else:
+            return data
     
     def get_recent_data(self, seconds: float) -> NDArray[np.float64]:
         """

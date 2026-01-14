@@ -80,7 +80,8 @@ class SSVEPClassifier:
     
     # Smoothing for temporal stability
     _history: List[ClassificationResult] = field(default_factory=list, repr=False)
-    _history_size: int = 3  # Reduced for faster response
+    _history_size: int = 5  # Increased for better stability (was 3)
+    min_correlation_diff: float = 0.05  # Minimum difference between correlations to make a decision
     
     def __post_init__(self) -> None:
         """Initialize reference signals for CCA."""
@@ -302,6 +303,140 @@ class SSVEPClassifier:
             raw_score=ratio
         )
     
+    def classify_fbcca(self, eeg_data: NDArray[np.float64]) -> ClassificationResult:
+        """
+        Filter Bank CCA (FBCCA) - applies multiple bandpass filters and votes.
+        
+        Uses 3 filter banks (applied directly to input data - no pre-filtering):
+        - Fundamental: 11-16 Hz (covers 12Hz and 15Hz)
+        - 1st harmonic: 23-31 Hz (covers 24Hz and 30Hz)  
+        - 2nd harmonic: 35-46 Hz (covers 36Hz and 45Hz)
+        
+        Each filter bank runs CCA independently, then votes are combined.
+        This is more accurate than single-band CCA and still lightweight.
+        
+        NOTE: Input data should only have CAR and notch filter applied (no main bandpass).
+        The filter banks handle all frequency selection.
+        
+        Args:
+            eeg_data: EEG data of shape (n_samples, n_channels) - should be raw or CAR+notch only
+            
+        Returns:
+            ClassificationResult
+        """
+        # CRITICAL: Use ONLY occipital channels for SSVEP
+        if eeg_data.shape[1] > max(self.occipital_channels):
+            data = eeg_data[:, self.occipital_channels]
+        else:
+            data = eeg_data
+        
+        # Filter bank definitions (fundamental, 1st harmonic, 2nd harmonic)
+        filter_banks = [
+            (11.0, 16.0),   # Fundamental: 12Hz, 15Hz
+            (23.0, 31.0),   # 1st harmonic: 24Hz, 30Hz
+            (35.0, 46.0)    # 2nd harmonic: 36Hz, 45Hz
+        ]
+        
+        # Votes for each target
+        up_votes = 0
+        down_votes = 0
+        correlations_up = []
+        correlations_down = []
+        
+        # Apply each filter bank and run CCA
+        for fb_low, fb_high in filter_banks:
+            # Apply bandpass filter to data
+            filtered_data = self._apply_bandpass(data, fb_low, fb_high)
+            
+            # Resize references to match filtered data length
+            n_data = filtered_data.shape[0]
+            if n_data != self._ref_signals_up.shape[0]:
+                ref_up_resized = self._resize_reference(self._ref_signals_up, n_data)
+                ref_down_resized = self._resize_reference(self._ref_signals_down, n_data)
+            else:
+                ref_up_resized = self._ref_signals_up
+                ref_down_resized = self._ref_signals_down
+            
+            # Run CCA on filtered data
+            try:
+                corr_up = self._cca_correlation(filtered_data, ref_up_resized)
+                corr_down = self._cca_correlation(filtered_data, ref_down_resized)
+                
+                correlations_up.append(corr_up)
+                correlations_down.append(corr_down)
+                
+                # Vote: which target has higher correlation in this filter bank?
+                if corr_up > corr_down:
+                    up_votes += 1
+                elif corr_down > corr_up:
+                    down_votes += 1
+                # If equal, no vote
+            except Exception as e:
+                # Skip this filter bank if CCA fails
+                continue
+        
+        # Combine results: majority vote
+        if up_votes > down_votes:
+            target = AttentionTarget.UP
+            avg_corr_up = np.mean(correlations_up) if correlations_up else 0.0
+            avg_corr_down = np.mean(correlations_down) if correlations_down else 0.0
+        elif down_votes > up_votes:
+            target = AttentionTarget.DOWN
+            avg_corr_up = np.mean(correlations_up) if correlations_up else 0.0
+            avg_corr_down = np.mean(correlations_down) if correlations_down else 0.0
+        else:
+            # Tie or no votes - return NONE
+            target = AttentionTarget.NONE
+            avg_corr_up = np.mean(correlations_up) if correlations_up else 0.0
+            avg_corr_down = np.mean(correlations_down) if correlations_down else 0.0
+        
+        # Calculate confidence based on vote margin and average correlations
+        total_votes = up_votes + down_votes
+        if total_votes == 0:
+            confidence = 0.1
+        else:
+            vote_margin = abs(up_votes - down_votes) / total_votes
+            avg_corr = (avg_corr_up + avg_corr_down) / 2
+            confidence = vote_margin * min(avg_corr * 1.5, 1.0)
+            confidence = max(confidence, 0.2)
+        
+        # Score based on vote difference
+        score = (up_votes - down_votes) / max(total_votes, 1)
+        
+        return ClassificationResult(
+            target=target,
+            confidence=confidence,
+            power_higher_freq=avg_corr_up,
+            power_lower_freq=avg_corr_down,
+            raw_score=score
+        )
+    
+    def _apply_bandpass(self, data: NDArray[np.float64], low: float, high: float) -> NDArray[np.float64]:
+        """
+        Apply bandpass filter to data (lightweight, no state tracking needed).
+        
+        Args:
+            data: EEG data (n_samples, n_channels)
+            low: Lower cutoff frequency (Hz)
+            high: Upper cutoff frequency (Hz)
+            
+        Returns:
+            Filtered data of same shape
+        """
+        nyquist = self.sample_rate / 2
+        low_norm = max(0.001, min(low / nyquist, 0.99))
+        high_norm = max(low_norm + 0.01, min(high / nyquist, 0.99))
+        
+        # Design filter
+        b, a = signal.butter(4, [low_norm, high_norm], btype='band')
+        
+        # Apply filter to each channel
+        filtered = np.zeros_like(data)
+        for ch in range(data.shape[1]):
+            filtered[:, ch] = signal.lfilter(b, a, data[:, ch])
+        
+        return filtered
+    
     def classify_cca(self, eeg_data: NDArray[np.float64]) -> ClassificationResult:
         """
         Classify using Canonical Correlation Analysis (CCA) with 2 harmonics.
@@ -454,12 +589,29 @@ class SSVEPClassifier:
             f"using_calibration={self._using_calibration}"
         )
         
-        # CCA correlation difference
+        # CCA correlation difference with improved scoring
         cca_diff = corr_up - corr_down
-        score = np.sign(cca_diff) * min(abs(cca_diff) * 3, 1)
         
-        # Confidence based on magnitude
-        confidence = min(abs(score) * 1.5, 1.0)
+        # Only make a decision if difference is significant enough
+        if abs(cca_diff) < self.min_correlation_diff:
+            # Difference too small - return NONE with low confidence
+            return ClassificationResult(
+                target=AttentionTarget.NONE,
+                confidence=0.1,
+                power_higher_freq=corr_up,
+                power_lower_freq=corr_down,
+                raw_score=0.0
+            )
+        
+        # Improved scoring: use normalized difference weighted by average correlation
+        # This gives more weight when both correlations are high (strong SSVEP)
+        avg_corr = (corr_up + corr_down) / 2
+        normalized_diff = cca_diff / (avg_corr + 0.1)  # Normalize by average correlation
+        score = np.sign(cca_diff) * min(abs(normalized_diff) * 2, 1)
+        
+        # Confidence based on magnitude and average correlation strength
+        confidence = min(abs(score) * 1.2, 1.0)
+        confidence *= min(avg_corr * 1.5, 1.0)  # Boost confidence when correlations are high
         confidence = max(confidence, 0.2)  # Minimum confidence
         
         # Direction based on CCA score
@@ -566,7 +718,9 @@ class SSVEPClassifier:
         Returns:
             ClassificationResult with temporal smoothing applied
         """
-        if method == "cca":
+        if method == "fbcca":
+            result = self.classify_fbcca(eeg_data)
+        elif method == "cca":
             result = self.classify_cca(eeg_data)
         else:
             result = self.classify_fft(eeg_data)
@@ -581,28 +735,50 @@ class SSVEPClassifier:
     
     def _smooth_result(self, current: ClassificationResult) -> ClassificationResult:
         """
-        Apply minimal smoothing - mostly just pass through current result.
+        Apply temporal smoothing for better stability.
         
-        For SSVEP we want fast response, not heavy smoothing.
+        Uses weighted average of recent results, with more weight on recent samples.
         """
-        # Just return current result with slight confidence boost from history
+        # Add current to history
+        self._history.append(current)
+        if len(self._history) > self._history_size:
+            self._history.pop(0)
+        
+        # If not enough history, return current
         if len(self._history) < 2:
             return current
         
-        # Light smoothing of raw_score only
-        avg_score = np.mean([r.raw_score for r in self._history])
+        # Weighted average: more recent samples get higher weight
+        weights = np.linspace(0.5, 1.0, len(self._history))
+        weights = weights / np.sum(weights)
         
-        # If history agrees with current, boost confidence
-        same_direction = sum(1 for r in self._history if r.target == current.target)
+        # Average raw scores with weights
+        avg_score = np.average([r.raw_score for r in self._history], weights=weights)
+        
+        # Determine target based on weighted average score
+        if abs(avg_score) < 0.05:  # Too close to zero
+            smoothed_target = AttentionTarget.NONE
+        else:
+            smoothed_target = AttentionTarget.UP if avg_score > 0 else AttentionTarget.DOWN
+        
+        # Count agreement with smoothed target
+        same_direction = sum(1 for r in self._history if r.target == smoothed_target)
         agreement_ratio = same_direction / len(self._history)
         
-        boosted_confidence = current.confidence * (0.7 + 0.3 * agreement_ratio)
+        # Boost confidence based on agreement and average correlation strength
+        avg_corr_up = np.mean([r.power_higher_freq for r in self._history])
+        avg_corr_down = np.mean([r.power_lower_freq for r in self._history])
+        avg_corr = (avg_corr_up + avg_corr_down) / 2
+        
+        boosted_confidence = current.confidence * (0.6 + 0.4 * agreement_ratio)
+        boosted_confidence *= min(avg_corr * 1.2, 1.0)  # Boost when correlations are strong
+        boosted_confidence = min(boosted_confidence, 1.0)
         
         return ClassificationResult(
-            target=current.target,
-            confidence=min(boosted_confidence, 1.0),
-            power_higher_freq=current.power_higher_freq,
-            power_lower_freq=current.power_lower_freq,
+            target=smoothed_target,
+            confidence=max(boosted_confidence, 0.2),
+            power_higher_freq=avg_corr_up,
+            power_lower_freq=avg_corr_down,
             raw_score=avg_score
         )
     

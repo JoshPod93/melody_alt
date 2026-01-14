@@ -1,6 +1,31 @@
 ﻿# BCI-UPIC Project Progress Report
 ## Date: 2026-01-14 (Latest Update)
 
+### Latest Changes (2026-01-14) - PARADIGM SHIFT TO P300
+- 🔄 **MAJOR PARADIGM CHANGE: Switching from SSVEP to P300 ERP-based BCI**
+  - Decision: SSVEP classification accuracy insufficient (UP target: 0-40%, DOWN: 83-98%)
+  - P300 offers more reliable binary classification for time-critical application
+  - Implementation in progress: Discrete flash stimuli instead of continuous flickering
+  - ERP epoching (0-800ms post-stimulus) with baseline correction
+  - Template matching/peak detection for classification
+  - Keep physics-based denoising (muscle/blink artifact removal)
+
+### Latest Changes (2026-01-14) - PREPROCESSING IMPROVEMENTS
+- ✅ **Physics-based artifact detection and removal**
+  - Muscle artifact detection: High-frequency filter (30-100 Hz) with power-based thresholding
+  - Eye blink detection: Low-frequency filter (0.5-4 Hz) with amplitude-based thresholding
+  - Artifact rejection: Forward-fill interpolation for artifact samples
+  - Statistics updated only from clean samples
+  - Configurable thresholds: `muscle_artifact_threshold=0.3`, `blink_threshold=3.0`
+  - Files modified: `src/bci/preprocessing.py` - Added `detect_muscle_artifact()`, `detect_blink_artifact()`
+  
+- ✅ **Filter Bank CCA (FBCCA) implementation**
+  - Multiple bandpass filters: fundamental (11-16 Hz), 1st harmonic (23-31 Hz), 2nd harmonic (35-46 Hz)
+  - Weighted combination of correlations across filter banks
+  - Applied to raw data (CAR + notch only, no main bandpass)
+  - Files modified: `src/bci/classifier.py` - Added `classify_fbcca()` method
+  - Results: Improved DOWN target accuracy (98.8%) but UP target still problematic (0%)
+
 ### Latest Changes (2026-01-14)
 - ✅ **Simplified CCA to work without calibration** - Removed requirement for subject-specific calibration
   - CCA now always uses synthetic references (sin/cos at target frequencies)

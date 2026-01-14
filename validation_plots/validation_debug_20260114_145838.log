@@ -1,0 +1,46 @@
+2026-01-14 14:58:38,170 - INFO - ============================================================
+2026-01-14 14:58:38,171 - INFO - VALIDATION CHUNKING ANALYSIS
+2026-01-14 14:58:38,171 - INFO - ============================================================
+2026-01-14 14:58:38,171 - INFO - Target duration: 10.0s
+2026-01-14 14:58:38,171 - INFO - Classification starts at: 2.0s (after template extraction)
+2026-01-14 14:58:38,172 - INFO - Available data duration: 8.0s
+2026-01-14 14:58:38,172 - INFO - Window size: 0.3s (75 samples)
+2026-01-14 14:58:38,172 - INFO - Step size: 0.05s (12 samples)
+2026-01-14 14:58:38,174 - INFO - Expected chunks per target: 155
+2026-01-14 14:58:38,174 - INFO - Top processed data length: 1944 samples (7.78s)
+2026-01-14 14:58:38,175 - INFO - Bottom processed data length: 2052 samples (8.21s)
+2026-01-14 14:58:38,175 - INFO - Classification start: 500 samples (2.0s)
+2026-01-14 14:58:38,175 - INFO - Top remaining after 2.0s: 1444 samples (5.78s)
+2026-01-14 14:58:38,175 - INFO - Bottom remaining after 2.0s: 1552 samples (6.21s)
+2026-01-14 14:58:38,175 - INFO - Actual top chunks created: 115
+2026-01-14 14:58:38,175 - INFO - Actual bottom chunks created: 124
+2026-01-14 14:58:38,175 - INFO - ============================================================
+2026-01-14 14:58:38,179 - INFO - Classifying 115 top chunks...
+2026-01-14 14:58:38,203 - DEBUG - Top chunk 1/115: corr_up=0.361174, corr_down=0.539786, pred=2, confidence=0.284
+2026-01-14 14:58:38,217 - DEBUG - Top chunk 2/115: corr_up=0.393023, corr_down=0.523373, pred=2, confidence=0.200
+2026-01-14 14:58:38,228 - DEBUG - Top chunk 3/115: corr_up=0.428242, corr_down=0.499001, pred=2, confidence=0.200
+2026-01-14 14:58:38,230 - DEBUG - Top chunk 4/115: corr_up=0.480963, corr_down=0.473332, pred=1, confidence=0.200
+2026-01-14 14:58:38,233 - DEBUG - Top chunk 5/115: corr_up=0.582942, corr_down=0.531582, pred=1, confidence=0.200
+2026-01-14 14:58:38,272 - DEBUG - Top chunk 21/115: corr_up=0.641078, corr_down=0.544860, pred=1, confidence=0.273
+2026-01-14 14:58:38,294 - DEBUG - Top chunk 41/115: corr_up=0.605128, corr_down=0.526032, pred=1, confidence=0.397
+2026-01-14 14:58:38,313 - DEBUG - Top chunk 61/115: corr_up=0.448480, corr_down=0.603645, pred=2, confidence=0.430
+2026-01-14 14:58:38,333 - DEBUG - Top chunk 81/115: corr_up=0.679964, corr_down=0.534696, pred=1, confidence=0.545
+2026-01-14 14:58:38,351 - DEBUG - Top chunk 101/115: corr_up=0.348156, corr_down=0.572777, pred=2, confidence=0.238
+2026-01-14 14:58:38,363 - INFO - Classifying 124 bottom chunks...
+2026-01-14 14:58:38,365 - DEBUG - Bottom chunk 1/124: corr_up=0.666087, corr_down=0.704972, pred=2, confidence=0.200
+2026-01-14 14:58:38,366 - DEBUG - Bottom chunk 2/124: corr_up=0.678265, corr_down=0.677041, pred=0, confidence=0.200
+2026-01-14 14:58:38,367 - DEBUG - Bottom chunk 3/124: corr_up=0.584976, corr_down=0.632652, pred=2, confidence=0.200
+2026-01-14 14:58:38,368 - DEBUG - Bottom chunk 4/124: corr_up=0.540278, corr_down=0.497544, pred=1, confidence=0.322
+2026-01-14 14:58:38,368 - DEBUG - Bottom chunk 5/124: corr_up=0.515200, corr_down=0.436306, pred=1, confidence=0.200
+2026-01-14 14:58:38,385 - DEBUG - Bottom chunk 21/124: corr_up=0.587973, corr_down=0.423652, pred=1, confidence=0.399
+2026-01-14 14:58:38,410 - DEBUG - Bottom chunk 41/124: corr_up=0.608079, corr_down=0.477869, pred=1, confidence=0.258
+2026-01-14 14:58:38,427 - DEBUG - Bottom chunk 61/124: corr_up=0.579070, corr_down=0.688795, pred=2, confidence=0.294
+2026-01-14 14:58:38,445 - DEBUG - Bottom chunk 81/124: corr_up=0.599608, corr_down=0.550353, pred=1, confidence=0.213
+2026-01-14 14:58:38,462 - DEBUG - Bottom chunk 101/124: corr_up=0.669999, corr_down=0.626460, pred=1, confidence=0.200
+2026-01-14 14:58:38,480 - DEBUG - Bottom chunk 121/124: corr_up=0.526884, corr_down=0.585557, pred=2, confidence=0.200
+2026-01-14 14:58:38,486 - INFO - ============================================================
+2026-01-14 14:58:38,486 - INFO - VALIDATION SUMMARY
+2026-01-14 14:58:38,486 - INFO - ============================================================
+2026-01-14 14:58:38,486 - INFO - Top target: 115 predictions, 32 correct, accuracy=27.8%
+2026-01-14 14:58:38,486 - INFO - Bottom target: 124 predictions, 54 correct, accuracy=43.5%
+2026-01-14 14:58:38,486 - INFO - Overall: 239 total predictions, 86 correct, accuracy=36.0%
