@@ -246,8 +246,8 @@ class P300Stimulus:
         self.bottom_target.start()
         
         # Offset bottom target by half ISI for alternating pattern
-        if self.flash_mode == "alternating":
-            self.bottom_target._last_flash_time = start_timestamp + (self.isi_ms / 2000.0)
+        # This ensures top and bottom flash at different times
+        self.bottom_target._last_flash_time = start_timestamp + (self.isi_ms / 2000.0)
     
     def stop(self) -> None:
         """Stop the stimulus presentation."""
