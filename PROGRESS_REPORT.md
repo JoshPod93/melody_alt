@@ -8,14 +8,19 @@
   - Validation now uses CCA with synthetic references (matches direct test behavior)
   - Files modified: `src/bci/classifier.py` - `classify_cca()` method, `src/bci/interface.py` - validation check
 
-### Latest Changes (2026-01-14) - SIMPLIFICATION DECISION
-- 🔄 **MAJOR SIMPLIFICATION: Removing screen calibration and subject-specific calibration requirements**
+### Latest Changes (2026-01-14) - SIMPLIFICATION COMPLETE
+- ✅ **MAJOR SIMPLIFICATION: Removed screen calibration dependency**
   - Decision: Overcomplicated the system with screen calibration and subject-specific calibration
   - New approach: Use fixed 15Hz (0° phase) and 12Hz (180° phase) synthetic references only
-  - Remove dependency on screen calibration system
-  - Keep subject-specific calibration code but make it completely optional (not used by default)
-  - Goal: Simpler, more reliable system that works out of the box
-  - This commit marks the state before simplification for easy rollback if needed
+  - Removed all screen calibration dependencies from classifier and interface
+  - Subject-specific calibration code remains but is completely optional (not used by default)
+  - All frequency references now use fixed 15Hz/12Hz values
+  - Files modified:
+    - `src/bci/classifier.py` - Removed `_load_screen_calibration()`, use fixed frequencies
+    - `src/bci/interface.py` - Removed screen calibration checks, use fixed frequencies
+    - `src/bci/calibration.py` - Simplified `get_trial_sequence()` to use fixed frequencies
+  - Result: Simpler, more reliable system that works out of the box
+  - Previous commit (b434f6f) marks the state before simplification for easy rollback if needed
 
 ### Previous Changes (2026-01-14)
 - ✅ **Fixed CCA DOWN target classification** - Critical fix for SSVEP classification accuracy

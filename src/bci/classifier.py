@@ -61,13 +61,12 @@ class SSVEPClassifier:
         occipital_channels: Indices of occipital channels (best for SSVEP)
     """
     sample_rate: float = 250.0  # Unicorn Black sample rate
-    target_frequencies: Tuple[float, float] = (15.0, 12.0)  # (higher_freq, lower_freq) - will be overridden by screen calibration if available
-    target_phases: Tuple[float, float] = (0.0, np.pi)  # Phase offsets: higher freq at 0°, lower freq at 180°
+    target_frequencies: Tuple[float, float] = (15.0, 12.0)  # Fixed: 15Hz (UP), 12Hz (DOWN)
+    target_phases: Tuple[float, float] = (0.0, np.pi)  # Phase offsets: 15Hz at 0°, 12Hz at 180°
     window_seconds: float = 0.5  # Shorter window for faster response
     n_harmonics: int = 2  # Include fundamental + 1 harmonic
     threshold: float = 0.05  # Very low threshold - almost always move
     occipital_channels: List[int] = field(default_factory=lambda: [5, 6, 7])  # PO7, Oz, PO8
-    _screen_calibration: Optional[Dict] = field(default=None, repr=False)  # Screen calibration data
     
     # CCA reference signals - synthetic (screen-calibrated) + calibrated (subject-specific)
     _ref_signals_up_synthetic: NDArray[np.float64] = field(init=False, repr=False)
@@ -85,33 +84,7 @@ class SSVEPClassifier:
     
     def __post_init__(self) -> None:
         """Initialize reference signals for CCA."""
-        self._load_screen_calibration()  # Load screen calibration if available
         self._generate_reference_signals()
-    
-    def _load_screen_calibration(self) -> None:
-        """Load screen calibration data using the centralized configuration."""
-        from .screen_config import get_screen_calibration
-        
-        screen_cal = get_screen_calibration()
-        
-        # Use actual measured frequencies from calibration
-        self.target_frequencies = screen_cal.frequencies
-        self.target_phases = screen_cal.phases
-        
-        # Store calibration data for reference (using generic field names)
-        self._screen_calibration = {
-            'refresh_rate_hz': screen_cal.refresh_rate_hz,
-            'actual_higher_freq': screen_cal.actual_higher_freq,
-            'actual_lower_freq': screen_cal.actual_lower_freq,
-            'calibrated_at': screen_cal.calibrated_at
-        }
-        
-        if screen_cal.is_calibrated:
-            print(f"[SCREEN CONFIG] Using calibrated frequencies: "
-                  f"{self.target_frequencies[0]:.3f}Hz, {self.target_frequencies[1]:.3f}Hz")
-        else:
-            print(f"[SCREEN CONFIG] Using default frequencies: "
-                  f"{self.target_frequencies[0]:.1f}Hz, {self.target_frequencies[1]:.1f}Hz")
     
     def load_calibration(self, calibration_data: 'CalibrationData') -> bool:
         """
@@ -236,12 +209,11 @@ class SSVEPClassifier:
         The reference signals must have the same frequency AND phase as
         the flickering targets to maximize correlation with the SSVEP response.
         
-        Uses actual measured frequencies from screen calibration if available,
-        otherwise uses target frequencies.
+        Uses fixed frequencies: 15Hz (UP, 0° phase) and 12Hz (DOWN, 180° phase).
         
         Visual stimulus uses: sin(2π * f * t + phase)
-        - Higher frequency (up): phase = 0
-        - Lower frequency (down): phase = π (180°)
+        - Higher frequency (up): 15Hz, phase = 0
+        - Lower frequency (down): 12Hz, phase = π (180°)
         """
         n_samples = int(self.window_seconds * self.sample_rate)
         t = np.arange(n_samples) / self.sample_rate

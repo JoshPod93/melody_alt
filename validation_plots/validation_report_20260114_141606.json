@@ -1,5 +1,5 @@
 {
-  "timestamp": "20260114_130602",
+  "timestamp": "20260114_141606",
   "sample_rate": 250.0,
   "window_seconds": 0.3,
   "update_interval_seconds": 0.05,
@@ -9,816 +9,795 @@
   },
   "top_target": {
     "ground_truth": 1,
-    "n_chunks": 115,
-    "n_correct": 115,
+    "n_chunks": 112,
+    "n_correct": 112,
     "accuracy": 1.0,
     "mean_confidence": 1.0,
-    "mean_corr_up": 23.74917454307748,
+    "mean_corr_up": 28.630213388709244,
     "mean_corr_down": 0.0,
     "predictions": [
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999976379,
-        "corr_up": 42.33623966089392,
+        "raw_score": 0.9999999999754627,
+        "corr_up": 4.075428508186606,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999965743,
-        "corr_up": 22.27506433158927,
+        "raw_score": 0.9999999999608389,
+        "corr_up": 1.8592537003690373,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999995573,
-        "corr_up": 15.55274412124325,
+        "raw_score": 0.99999999994332,
+        "corr_up": 1.0903012126692857,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999844885,
-        "corr_up": 2.8078050276908475,
+        "raw_score": 0.999999999939793,
+        "corr_up": 2.847548772462261,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999740771,
-        "corr_up": 2.7992376525095626,
+        "raw_score": 0.9999999999479604,
+        "corr_up": 3.414980455727258,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999305018,
-        "corr_up": 0.7290997262775455,
+        "raw_score": 0.9999999999644356,
+        "corr_up": 2.364478987573492,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999405786,
-        "corr_up": 18.570896167838914,
+        "raw_score": 0.9999999999606836,
+        "corr_up": 2.156396912180655,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999516792,
-        "corr_up": 41.28652146871036,
+        "raw_score": 0.9999999999684844,
+        "corr_up": 17.006003755909024,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999996414,
-        "corr_up": 33.886072377288116,
+        "raw_score": 0.9999999999805856,
+        "corr_up": 16.695263738482723,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999971788,
-        "corr_up": 32.36234054090732,
+        "raw_score": 0.9999999999937433,
+        "corr_up": 14.493007765733928,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999963533,
-        "corr_up": 20.41251956161414,
+        "raw_score": 0.9999999999944412,
+        "corr_up": 26.406958553719033,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999956147,
-        "corr_up": 19.354795996777753,
+        "raw_score": 0.9999999999837764,
+        "corr_up": 2.6326814806089787,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999960845,
-        "corr_up": 59.48391816425668,
+        "raw_score": 0.999999999871953,
+        "corr_up": 0.2920815919691921,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999973097,
-        "corr_up": 81.76455092761745,
+        "raw_score": 0.9999999998687888,
+        "corr_up": 7.530386132111283,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999986544,
-        "corr_up": 88.29983097080361,
+        "raw_score": 0.9999999998783519,
+        "corr_up": 10.758634697360119,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999983972,
-        "corr_up": 40.76055256719205,
+        "raw_score": 0.9999999999850303,
+        "corr_up": 4.477359004335809,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999971436,
-        "corr_up": 20.068007650367004,
+        "raw_score": 0.9999999999869034,
+        "corr_up": 13.054079198937746,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999986211,
-        "corr_up": 2.9471793508625446,
+        "raw_score": 0.9999999999804038,
+        "corr_up": 3.4730472825590186,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999854371,
-        "corr_up": 20.942555870029548,
+        "raw_score": 0.9999999999845591,
+        "corr_up": 10.13259313510786,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999854531,
-        "corr_up": 20.262685508586788,
+        "raw_score": 0.9999999999846138,
+        "corr_up": 13.339996859060289,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999957313,
-        "corr_up": 32.298313753896764,
+        "raw_score": 0.9999999999929118,
+        "corr_up": 25.642930383839143,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999936634,
-        "corr_up": 9.108715885589138,
+        "raw_score": 0.999999999994996,
+        "corr_up": 27.652477418863096,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999925394,
-        "corr_up": 12.038004355555662,
+        "raw_score": 0.9999999999966559,
+        "corr_up": 39.73577653901894,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999985579,
-        "corr_up": 4.170571038273382,
+        "raw_score": 0.9999999999920798,
+        "corr_up": 5.672974291545754,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999812624,
-        "corr_up": 4.179091312507681,
+        "raw_score": 0.9999999999913652,
+        "corr_up": 17.360757169768426,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999982791,
-        "corr_up": 26.872994351150343,
+        "raw_score": 0.9999999999904032,
+        "corr_up": 18.50920033227592,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999883503,
-        "corr_up": 13.700532194970934,
+        "raw_score": 0.9999999999931893,
+        "corr_up": 10.788112993181555,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999498724,
-        "corr_up": 0.7175523780594971,
+        "raw_score": 0.9999999999885881,
+        "corr_up": 5.111539666873871,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999442651,
-        "corr_up": 4.867823677687106,
+        "raw_score": 0.9999999999871544,
+        "corr_up": 10.305306631968369,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999421042,
-        "corr_up": 7.256040009692417,
+        "raw_score": 0.9999999999878902,
+        "corr_up": 14.160973386974945,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999857736,
-        "corr_up": 11.969374319552047,
+        "raw_score": 0.9999999999933715,
+        "corr_up": 32.051720620881404,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999442549,
-        "corr_up": 0.6891842717198879,
+        "raw_score": 0.9999999999959664,
+        "corr_up": 52.10694529126658,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999367506,
-        "corr_up": 2.7552402722246554,
+        "raw_score": 0.9999999999975779,
+        "corr_up": 44.90554099506186,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999998630106,
-        "corr_up": 0.43558795349313206,
+        "raw_score": 0.9999999999973287,
+        "corr_up": 25.85148179119256,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999085173,
-        "corr_up": 11.656986251021896,
+        "raw_score": 0.9999999999617676,
+        "corr_up": 0.920794416911226,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999184604,
-        "corr_up": 15.467495482357455,
+        "raw_score": 0.9999999999480623,
+        "corr_up": 2.3071728604786506,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999993966,
-        "corr_up": 32.69998377440407,
+        "raw_score": 0.9999999999361903,
+        "corr_up": 2.5326777953841666,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999995692,
-        "corr_up": 29.40371740810759,
+        "raw_score": 0.9999999999687676,
+        "corr_up": 9.199722832545234,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999968644,
-        "corr_up": 33.92496839298455,
+        "raw_score": 0.9999999999791128,
+        "corr_up": 8.124955280437838,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999996851,
-        "corr_up": 32.27660303225199,
+        "raw_score": 0.9999999999907491,
+        "corr_up": 21.855924109491284,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999997003,
-        "corr_up": 33.9571041895927,
+        "raw_score": 0.9999999999930583,
+        "corr_up": 25.364815424318188,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999972022,
-        "corr_up": 42.54706209437779,
+        "raw_score": 0.9999999999952789,
+        "corr_up": 17.71177214268619,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999970469,
-        "corr_up": 28.058432301922245,
+        "raw_score": 0.9999999999949449,
+        "corr_up": 17.930907632438615,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999937338,
-        "corr_up": 7.761329759286288,
+        "raw_score": 0.9999999999934751,
+        "corr_up": 11.973017948823644,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999918626,
-        "corr_up": 12.556740675555082,
+        "raw_score": 0.9999999999595076,
+        "corr_up": 0.9298171718702837,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999903185,
-        "corr_up": 12.20072013167895,
+        "raw_score": 0.9999999999531086,
+        "corr_up": 4.036491814248172,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999909847,
-        "corr_up": 9.18615971732329,
+        "raw_score": 0.999999999952665,
+        "corr_up": 10.327370137555416,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999916217,
-        "corr_up": 16.520738128452706,
+        "raw_score": 0.9999999999878381,
+        "corr_up": 49.28352717455014,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999789387,
-        "corr_up": 2.162399443180094,
+        "raw_score": 0.9999999999952855,
+        "corr_up": 41.130812788875296,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999972999,
-        "corr_up": 3.483709748177776,
+        "raw_score": 0.9999999999974821,
+        "corr_up": 32.33022047107534,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999602442,
-        "corr_up": 2.256446096051653,
+        "raw_score": 0.9999999999975246,
+        "corr_up": 52.5930580472035,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999624545,
-        "corr_up": 2.5243632987299174,
+        "raw_score": 0.9999999999961132,
+        "corr_up": 15.00168447956441,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999647787,
-        "corr_up": 4.601482365388887,
+        "raw_score": 0.9999999999955675,
+        "corr_up": 21.141028838804285,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999944226,
-        "corr_up": 0.943608423670642,
+        "raw_score": 0.9999999999889385,
+        "corr_up": 4.589558678043976,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999483395,
-        "corr_up": 3.666636479373091,
+        "raw_score": 0.9999999999894434,
+        "corr_up": 19.41251549578349,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999218837,
-        "corr_up": 0.9891182380911496,
+        "raw_score": 0.9999999999876562,
+        "corr_up": 9.909276680128977,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999528608,
-        "corr_up": 7.666075423048764,
+        "raw_score": 0.9999999999927683,
+        "corr_up": 15.498642057815582,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999609125,
-        "corr_up": 32.071664803715365,
+        "raw_score": 0.9999999999916785,
+        "corr_up": 11.875226028994803,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999993905,
-        "corr_up": 47.121407412118884,
+        "raw_score": 0.9999999999902761,
+        "corr_up": 6.99365228410688,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999962146,
-        "corr_up": 16.35028429102163,
+        "raw_score": 0.9999999999861992,
+        "corr_up": 5.352512570278134,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999949877,
-        "corr_up": 14.708558703416351,
+        "raw_score": 0.9999999999866097,
+        "corr_up": 13.909215580546359,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999946957,
-        "corr_up": 33.353723106909804,
+        "raw_score": 0.9999999999908109,
+        "corr_up": 58.99923984071455,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999947441,
-        "corr_up": 16.748338208085364,
+        "raw_score": 0.9999999999955526,
+        "corr_up": 22.431646035498044,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999892349,
-        "corr_up": 4.287067750487249,
+        "raw_score": 0.9999999999952522,
+        "corr_up": 12.360513234881081,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999876558,
-        "corr_up": 12.926399024453447,
+        "raw_score": 0.999999999995275,
+        "corr_up": 61.480287374022105,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999808672,
-        "corr_up": 3.797084752458289,
+        "raw_score": 0.9999999999962519,
+        "corr_up": 65.47795175023545,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999864615,
-        "corr_up": 15.282833297821567,
+        "raw_score": 0.9999999999985366,
+        "corr_up": 80.89340631978004,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999794619,
-        "corr_up": 3.4801197609325274,
+        "raw_score": 0.9999999999982322,
+        "corr_up": 39.37294170129013,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999747428,
-        "corr_up": 2.469517247864346,
+        "raw_score": 0.9999999999971158,
+        "corr_up": 20.506816017709493,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999744165,
-        "corr_up": 13.294233910608668,
+        "raw_score": 0.9999999999959858,
+        "corr_up": 21.61387776052706,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999819743,
-        "corr_up": 16.49726388755741,
+        "raw_score": 0.9999999999961324,
+        "corr_up": 47.6247830372897,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999942761,
-        "corr_up": 27.869513079636306,
+        "raw_score": 0.9999999999970263,
+        "corr_up": 45.55338811276154,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999961412,
-        "corr_up": 51.896606017194344,
+        "raw_score": 0.9999999999978989,
+        "corr_up": 49.78890723606272,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999975634,
-        "corr_up": 55.72758476699847,
+        "raw_score": 0.9999999999981694,
+        "corr_up": 77.6289416423288,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999977836,
-        "corr_up": 34.155292701460844,
+        "raw_score": 0.9999999999986255,
+        "corr_up": 120.97894311829137,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999976515,
-        "corr_up": 43.05004143944849,
+        "raw_score": 0.9999999999987267,
+        "corr_up": 58.63705749096342,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999975383,
-        "corr_up": 46.85291318550044,
+        "raw_score": 0.9999999999959681,
+        "corr_up": 10.45619240504444,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999974074,
-        "corr_up": 30.117625351878072,
+        "raw_score": 0.9999999999903982,
+        "corr_up": 5.702523528698143,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999887526,
-        "corr_up": 3.5351128584946743,
+        "raw_score": 0.999999999975488,
+        "corr_up": 2.153484042851992,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999720783,
-        "corr_up": 1.9172901281793042,
+        "raw_score": 0.9999999998548855,
+        "corr_up": 0.26927263785764705,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999688692,
-        "corr_up": 7.7233336022077745,
+        "raw_score": 0.999999999855291,
+        "corr_up": 6.1275486342458265,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999720401,
-        "corr_up": 5.326272194041978,
+        "raw_score": 0.999999999869413,
+        "corr_up": 24.56729111729313,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999880655,
-        "corr_up": 24.503956841318878,
+        "raw_score": 0.9999999999923134,
+        "corr_up": 37.45699110612879,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999890274,
-        "corr_up": 9.938475771745772,
+        "raw_score": 0.9999999999960613,
+        "corr_up": 19.69986397090062,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999904584,
-        "corr_up": 6.905275416284614,
+        "raw_score": 0.9999999999955524,
+        "corr_up": 17.866775447735407,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999810781,
-        "corr_up": 3.103447477702892,
+        "raw_score": 0.9999999999927525,
+        "corr_up": 9.033443817315181,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999764807,
-        "corr_up": 4.19219479902148,
+        "raw_score": 0.9999999999885608,
+        "corr_up": 5.665430968479704,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999617946,
-        "corr_up": 1.708225347915494,
+        "raw_score": 0.9999999999862563,
+        "corr_up": 7.9932979390414145,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999710347,
-        "corr_up": 22.21432923574323,
+        "raw_score": 0.9999999998972361,
+        "corr_up": 0.3595436083185569,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999774593,
-        "corr_up": 21.830175368636713,
+        "raw_score": 0.9999999998974474,
+        "corr_up": 5.876380352408163,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999951577,
-        "corr_up": 18.366151072857594,
+        "raw_score": 0.9999999998995229,
+        "corr_up": 15.914713405595919,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999995474,
-        "corr_up": 28.14943928213011,
+        "raw_score": 0.9999999999904006,
+        "corr_up": 18.19062046106826,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999851344,
-        "corr_up": 2.8090267625677234,
+        "raw_score": 0.9999999999948388,
+        "corr_up": 27.00542984943832,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999851313,
-        "corr_up": 18.333524935865324,
+        "raw_score": 0.9999999999962009,
+        "corr_up": 45.51401959433226,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999840911,
-        "corr_up": 14.986042778716044,
+        "raw_score": 0.9999999999962483,
+        "corr_up": 18.674887371871762,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999950754,
-        "corr_up": 37.781864218173716,
+        "raw_score": 0.999999999997034,
+        "corr_up": 74.28615546546699,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999937111,
-        "corr_up": 10.474583766781219,
+        "raw_score": 0.9999999999968944,
+        "corr_up": 38.22152544545309,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999694221,
-        "corr_up": 1.2572315038114583,
+        "raw_score": 0.9999999999971975,
+        "corr_up": 22.4985064902501,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999636723,
-        "corr_up": 5.026101581822859,
+        "raw_score": 0.9999999999950301,
+        "corr_up": 12.740877804335156,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999313465,
-        "corr_up": 0.9387515374984946,
+        "raw_score": 0.999999999987396,
+        "corr_up": 3.9186977535108425,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999562768,
-        "corr_up": 21.057141994741976,
+        "raw_score": 0.9999999999880894,
+        "corr_up": 42.294932413226206,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999623226,
-        "corr_up": 56.84350426221693,
+        "raw_score": 0.9999999999904228,
+        "corr_up": 117.84138244139564,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999966968,
-        "corr_up": 29.396321245085666,
+        "raw_score": 0.9999999999988035,
+        "corr_up": 265.5527169920928,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999975279,
-        "corr_up": 44.34110868033848,
+        "raw_score": 0.9999999999993735,
+        "corr_up": 152.82556177079834,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999973724,
-        "corr_up": 44.93660080301461,
+        "raw_score": 0.9999999999993582,
+        "corr_up": 111.7477189917614,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999979426,
-        "corr_up": 59.12867393650523,
+        "raw_score": 0.9999999999991108,
+        "corr_up": 89.39037697888996,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999981483,
-        "corr_up": 61.03483397841128,
+        "raw_score": 0.9999999999990097,
+        "corr_up": 104.47447958699904,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999985696,
-        "corr_up": 104.02566633136611,
+        "raw_score": 0.9999999999987615,
+        "corr_up": 61.007705365933994,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999988423,
-        "corr_up": 114.48325533557508,
+        "raw_score": 0.999999999997334,
+        "corr_up": 18.51240270394968,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999990067,
-        "corr_up": 87.35938869129188,
+        "raw_score": 0.9999999999960497,
+        "corr_up": 20.790032268995787,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999986597,
-        "corr_up": 49.94702516479436,
+        "raw_score": 0.9999999999955227,
+        "corr_up": 31.051753226447772,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999982535,
-        "corr_up": 47.78482449453926,
-        "corr_down": 0.0
-      },
-      {
-        "prediction": 1,
-        "confidence": 1.0,
-        "raw_score": 0.9999999999979327,
-        "corr_up": 47.4533508026687,
-        "corr_down": 0.0
-      },
-      {
-        "prediction": 1,
-        "confidence": 1.0,
-        "raw_score": 0.9999999999980513,
-        "corr_up": 60.75531429777044,
-        "corr_down": 0.0
-      },
-      {
-        "prediction": 1,
-        "confidence": 1.0,
-        "raw_score": 0.9999999999982364,
-        "corr_up": 65.05565898204696,
+        "raw_score": 0.999999999996742,
+        "corr_up": 57.36007290421129,
         "corr_down": 0.0
       }
     ]
@@ -829,899 +808,899 @@
     "n_correct": 0,
     "accuracy": 0.0,
     "mean_confidence": 1.0,
-    "mean_corr_up": 64.28988178461911,
+    "mean_corr_up": 82.04715933071591,
     "mean_corr_down": 0.0,
     "predictions": [
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999994574,
-        "corr_up": 7.636656904267989,
+        "raw_score": 0.9999999999959958,
+        "corr_up": 14.186365032487442,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999937094,
-        "corr_up": 23.58285728683525,
+        "raw_score": 0.9999999999961399,
+        "corr_up": 35.86715952525585,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999935262,
-        "corr_up": 47.933952744222594,
+        "raw_score": 0.9999999999964214,
+        "corr_up": 111.26911627530431,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999973955,
-        "corr_up": 67.25788473393537,
+        "raw_score": 0.999999999998508,
+        "corr_up": 126.73396571510426,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999983719,
-        "corr_up": 76.25092678763164,
+        "raw_score": 0.9999999999990389,
+        "corr_up": 83.630773036805,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999978063,
-        "corr_up": 26.435418279586344,
+        "raw_score": 0.9999999999984978,
+        "corr_up": 39.65451870157375,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999965591,
-        "corr_up": 19.125328740574552,
+        "raw_score": 0.9999999999978731,
+        "corr_up": 37.54562176371977,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999958037,
-        "corr_up": 27.949285797462625,
+        "raw_score": 0.9999999999977546,
+        "corr_up": 64.47381947598583,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999967809,
-        "corr_up": 117.5043458923183,
+        "raw_score": 0.999999999998153,
+        "corr_up": 75.38419684311144,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999982533,
-        "corr_up": 123.2935172689058,
+        "raw_score": 0.9999999999986008,
+        "corr_up": 75.77302062762011,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999991829,
-        "corr_up": 126.68420360439777,
+        "raw_score": 0.9999999999962924,
+        "corr_up": 11.797495701190627,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999991728,
-        "corr_up": 113.46977929846759,
+        "raw_score": 0.9999999999936618,
+        "corr_up": 10.847720647882536,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999987866,
-        "corr_up": 50.77069633918942,
+        "raw_score": 0.999999999956061,
+        "corr_up": 0.8762543335174087,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999984386,
-        "corr_up": 54.545947024206825,
+        "raw_score": 0.9999999999577168,
+        "corr_up": 28.499685624698483,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999982521,
-        "corr_up": 69.39433665950732,
+        "raw_score": 0.9999999999603159,
+        "corr_up": 70.33908196669219,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999972388,
-        "corr_up": 19.961943214050706,
+        "raw_score": 0.9999999999977144,
+        "corr_up": 51.91073237181505,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999861581,
-        "corr_up": 2.8510022792089735,
+        "raw_score": 0.9999999999978453,
+        "corr_up": 32.09130308830251,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999764704,
-        "corr_up": 3.2782386921981783,
+        "raw_score": 0.999999999997979,
+        "corr_up": 98.00151093416675,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999771608,
-        "corr_up": 34.03364816752407,
+        "raw_score": 0.9999999999971981,
+        "corr_up": 23.42375581522328,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999883716,
-        "corr_up": 69.32299226522302,
+        "raw_score": 0.9999999999973679,
+        "corr_up": 38.36053917281062,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.99999999999813,
-        "corr_up": 81.38392819187472,
+        "raw_score": 0.9999999999964819,
+        "corr_up": 27.186353068896285,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999979994,
-        "corr_up": 30.024282320204613,
+        "raw_score": 0.9999999999974395,
+        "corr_up": 71.62255443199514,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999970463,
-        "corr_up": 23.246387129204212,
+        "raw_score": 0.9999999999980073,
+        "corr_up": 110.65994443341208,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999958983,
-        "corr_up": 21.39910996437967,
+        "raw_score": 0.9999999999988268,
+        "corr_up": 82.00449624506795,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999948344,
-        "corr_up": 15.33242874278365,
+        "raw_score": 0.9999999999987598,
+        "corr_up": 62.610037734174504,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999661318,
-        "corr_up": 0.0995172739696965,
+        "raw_score": 0.999999999998717,
+        "corr_up": 96.8711111180244,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999996624579,
-        "corr_up": 79.78185841013766,
+        "raw_score": 0.9999999999988199,
+        "corr_up": 109.78062222803028,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999996644103,
-        "corr_up": 150.44406464954267,
+        "raw_score": 0.9999999999991411,
+        "corr_up": 157.86822081488467,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999990529,
-        "corr_up": 108.33063412535319,
+        "raw_score": 0.9999999999992646,
+        "corr_up": 151.0125757706718,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999989408,
-        "corr_up": 62.9001831860108,
+        "raw_score": 0.999999999998058,
+        "corr_up": 22.071668973916715,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999988115,
-        "corr_up": 95.01008530920524,
+        "raw_score": 0.9999999999959343,
+        "corr_up": 14.276178132217442,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999985653,
-        "corr_up": 60.16975271494891,
+        "raw_score": 0.9999999999953868,
+        "corr_up": 43.39413640925064,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999966721,
-        "corr_up": 13.756945793911473,
+        "raw_score": 0.9999999999960446,
+        "corr_up": 39.11155045414383,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999676112,
-        "corr_up": 1.1333360356555713,
+        "raw_score": 0.9999999999980189,
+        "corr_up": 92.44013180120417,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999639595,
-        "corr_up": 7.925602464038641,
+        "raw_score": 0.9999999999985691,
+        "corr_up": 152.94064484782908,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999961903,
-        "corr_up": 7.4415173053044805,
+        "raw_score": 0.9999999999992228,
+        "corr_up": 167.7917599975512,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999986196,
-        "corr_up": 6.512053096328314,
+        "raw_score": 0.999999999999415,
+        "corr_up": 197.9167707895289,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999828632,
-        "corr_up": 4.421669450340172,
+        "raw_score": 0.9999999999974677,
+        "corr_up": 15.393761899532313,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999855285,
-        "corr_up": 18.373720783348386,
+        "raw_score": 0.9999999999972884,
+        "corr_up": 88.21060205178523,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999899097,
-        "corr_up": 45.19700669570402,
+        "raw_score": 0.9999999999972712,
+        "corr_up": 179.630054159392,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999971947,
-        "corr_up": 131.41782081342242,
+        "raw_score": 0.9999999999992685,
+        "corr_up": 198.10803307002539,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999982747,
-        "corr_up": 45.40278674848319,
+        "raw_score": 0.9999999999994563,
+        "corr_up": 175.4613874212191,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999949605,
-        "corr_up": 8.22698708469733,
+        "raw_score": 0.9999999999995498,
+        "corr_up": 362.7646137201482,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999917201,
-        "corr_up": 9.54033450362561,
+        "raw_score": 0.9999999999996324,
+        "corr_up": 389.0811514241389,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999890625,
-        "corr_up": 9.827536543157711,
+        "raw_score": 0.9999999999997172,
+        "corr_up": 316.6605709710075,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999926787,
-        "corr_up": 76.55333485377157,
+        "raw_score": 0.9999999999996354,
+        "corr_up": 192.0042309355941,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999960193,
-        "corr_up": 217.3161173319748,
+        "raw_score": 0.9999999999993875,
+        "corr_up": 99.9306274271776,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999993063,
-        "corr_up": 318.0031194254225,
+        "raw_score": 0.999999999998939,
+        "corr_up": 60.16959719747438,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999999567,
-        "corr_up": 190.65353948301296,
+        "raw_score": 0.999999999996303,
+        "corr_up": 11.864670109378052,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999994625,
-        "corr_up": 129.25963222222305,
+        "raw_score": 0.9999999999948542,
+        "corr_up": 18.70089530841862,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999998631,
-        "corr_up": 35.60320982506563,
+        "raw_score": 0.999999999993976,
+        "corr_up": 23.276820981156792,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999983588,
-        "corr_up": 74.54774706435012,
+        "raw_score": 0.9999999999954191,
+        "corr_up": 24.393284009319235,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999984293,
-        "corr_up": 177.8658201251081,
+        "raw_score": 0.9999999999957082,
+        "corr_up": 22.32180103754207,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999992294,
-        "corr_up": 244.89513490380003,
+        "raw_score": 0.9999999999958243,
+        "corr_up": 25.33295754689046,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999995638,
-        "corr_up": 295.51634360678355,
+        "raw_score": 0.9999999999964987,
+        "corr_up": 48.15115948535313,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999995639,
-        "corr_up": 178.11592080833918,
+        "raw_score": 0.9999999999975372,
+        "corr_up": 73.30882992879577,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999994179,
-        "corr_up": 118.16786286390283,
+        "raw_score": 0.9999999999982871,
+        "corr_up": 58.900938876914694,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999992712,
-        "corr_up": 128.41737598429626,
+        "raw_score": 0.9999999999983534,
+        "corr_up": 53.26194989371273,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999993184,
-        "corr_up": 238.39332901250285,
+        "raw_score": 0.9999999999971338,
+        "corr_up": 19.908124617745788,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999995168,
-        "corr_up": 397.78893115737765,
+        "raw_score": 0.9999999999952868,
+        "corr_up": 13.813802065269611,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999995942,
-        "corr_up": 182.92553473761143,
+        "raw_score": 0.9999999999894268,
+        "corr_up": 5.13952222545059,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999993872,
-        "corr_up": 96.10923438347743,
+        "raw_score": 0.9999999997251012,
+        "corr_up": 0.12531326285047822,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999927857,
-        "corr_up": 4.986070498674581,
+        "raw_score": 0.9999999997269414,
+        "corr_up": 58.18889030450753,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999891434,
-        "corr_up": 8.715680031031834,
+        "raw_score": 0.9999999997331211,
+        "corr_up": 109.00013624214718,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999864192,
-        "corr_up": 10.854132193333292,
+        "raw_score": 0.999999999998742,
+        "corr_up": 87.89593801698807,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999992669,
-        "corr_up": 76.5386504372775,
+        "raw_score": 0.9999999999990373,
+        "corr_up": 120.1125580554215,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999954582,
-        "corr_up": 32.19861078352805,
+        "raw_score": 0.9999999999989253,
+        "corr_up": 79.77826412082959,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999980539,
-        "corr_up": 70.11566171164077,
+        "raw_score": 0.9999999999991552,
+        "corr_up": 222.9049385248662,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999980442,
-        "corr_up": 74.8748959896347,
+        "raw_score": 0.9999999999991095,
+        "corr_up": 103.12803971095353,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999983582,
-        "corr_up": 46.22086563598973,
+        "raw_score": 0.999999999999269,
+        "corr_up": 129.030751643379,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999643544,
-        "corr_up": 0.9667685760900641,
+        "raw_score": 0.999999999999122,
+        "corr_up": 112.43327008359172,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999616782,
-        "corr_up": 10.678746723125887,
+        "raw_score": 0.9999999999988588,
+        "corr_up": 56.846242703005615,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999613479,
-        "corr_up": 31.702256200877034,
+        "raw_score": 0.9999999999982082,
+        "corr_up": 36.676476355344526,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999994981,
-        "corr_up": 39.39886542959894,
+        "raw_score": 0.9999999999975091,
+        "corr_up": 33.48000088506901,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999960737,
-        "corr_up": 16.428563120648516,
+        "raw_score": 0.9999999999968757,
+        "corr_up": 27.325226569968535,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999996593,
-        "corr_up": 62.65070165772624,
+        "raw_score": 0.9999999999972209,
+        "corr_up": 59.13341150367171,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999970003,
-        "corr_up": 75.98468851040427,
+        "raw_score": 0.9999999999978525,
+        "corr_up": 91.58644531755988,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999986185,
-        "corr_up": 81.18522162933077,
+        "raw_score": 0.9999999999984682,
+        "corr_up": 55.17374024477811,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999989658,
-        "corr_up": 180.20693579289306,
+        "raw_score": 0.9999999999982038,
+        "corr_up": 40.25680296235734,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999982924,
-        "corr_up": 29.96902417056866,
+        "raw_score": 0.9999999999957262,
+        "corr_up": 11.730748707133898,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999960799,
-        "corr_up": 12.708007127141144,
+        "raw_score": 0.9999999999941673,
+        "corr_up": 15.409980436671908,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999943846,
-        "corr_up": 17.728487586913285,
+        "raw_score": 0.9999999999912162,
+        "corr_up": 8.820113617059716,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999933041,
-        "corr_up": 15.202602260350364,
+        "raw_score": 0.9999999999713576,
+        "corr_up": 1.4684267415365921,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999947105,
-        "corr_up": 27.392886964594734,
+        "raw_score": 0.9999999999458673,
+        "corr_up": 1.205396082361333,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999953396,
-        "corr_up": 26.6446882959195,
+        "raw_score": 0.9999999999406558,
+        "corr_up": 3.7075244042797126,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999972907,
-        "corr_up": 138.0246733925349,
+        "raw_score": 0.999999999869455,
+        "corr_up": 0.35498414568502146,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999982246,
-        "corr_up": 117.84798432402866,
+        "raw_score": 0.9999999998840119,
+        "corr_up": 2.5452146941786227,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999991996,
-        "corr_up": 120.7398009169185,
+        "raw_score": 0.9999999998914778,
+        "corr_up": 21.859578430068268,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999988766,
-        "corr_up": 59.05882528313718,
+        "raw_score": 0.9999999999831636,
+        "corr_up": 15.048463437143678,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999998698,
-        "corr_up": 72.23871194267805,
+        "raw_score": 0.999999999981684,
+        "corr_up": 2.2868497949017077,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999985922,
-        "corr_up": 87.29305796591156,
+        "raw_score": 0.999999999982394,
+        "corr_up": 40.90173331289618,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999984502,
-        "corr_up": 47.190515015093695,
+        "raw_score": 0.9999999999840837,
+        "corr_up": 63.4734023317459,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999979723,
-        "corr_up": 35.48158005409462,
+        "raw_score": 0.9999999999982737,
+        "corr_up": 86.30485703008146,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999969885,
-        "corr_up": 24.40543239483946,
+        "raw_score": 0.9999999999987473,
+        "corr_up": 97.69630914881891,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999972976,
-        "corr_up": 83.9318652328,
+        "raw_score": 0.9999999999990224,
+        "corr_up": 133.2390371174312,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999970881,
-        "corr_up": 29.012468567182385,
+        "raw_score": 0.999999999999117,
+        "corr_up": 114.28823199732172,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999966233,
-        "corr_up": 18.208348495931762,
+        "raw_score": 0.9999999999992218,
+        "corr_up": 140.9941626881426,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.99999999999651,
-        "corr_up": 65.31978848762526,
+        "raw_score": 0.9999999999993578,
+        "corr_up": 291.8716740530772,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999971211,
-        "corr_up": 61.958510169981,
+        "raw_score": 0.9999999999995016,
+        "corr_up": 225.51176874554568,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999974691,
-        "corr_up": 22.48307158314474,
+        "raw_score": 0.9999999999994333,
+        "corr_up": 109.4516165342271,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999972321,
-        "corr_up": 44.605494719571034,
+        "raw_score": 0.9999999999992584,
+        "corr_up": 115.24273402448397,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999945236,
-        "corr_up": 10.267479077455237,
+        "raw_score": 0.9999999999987974,
+        "corr_up": 54.75449413591606,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999992918,
-        "corr_up": 10.793967813247818,
+        "raw_score": 0.9999999999922525,
+        "corr_up": 4.866571520266442,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999929653,
-        "corr_up": 47.623897149597155,
+        "raw_score": 0.9999999999920468,
+        "corr_up": 67.33484612478011,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999946176,
-        "corr_up": 20.90860471619943,
+        "raw_score": 0.999999999992428,
+        "corr_up": 146.5268389976698,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999942951,
-        "corr_up": 9.772881122700719,
+        "raw_score": 0.9999999999988631,
+        "corr_up": 80.44150855052087,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.999999999994074,
-        "corr_up": 36.19286108662946,
+        "raw_score": 0.9999999999991194,
+        "corr_up": 139.57465070878752,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999949801,
-        "corr_up": 48.44954897879332,
+        "raw_score": 0.9999999999992554,
+        "corr_up": 364.6324006009,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999980108,
-        "corr_up": 87.65317912610526,
+        "raw_score": 0.9999999999995527,
+        "corr_up": 284.48056087210813,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999980628,
-        "corr_up": 38.361634032871855,
+        "raw_score": 0.9999999999996229,
+        "corr_up": 197.59187974613238,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999979318,
-        "corr_up": 40.697456907345256,
+        "raw_score": 0.9999999999994283,
+        "corr_up": 116.64972128769837,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999977112,
-        "corr_up": 55.47048375183923,
+        "raw_score": 0.9999999999991666,
+        "corr_up": 87.96164934762263,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.99999999999515,
-        "corr_up": 9.71823122926908,
+        "raw_score": 0.9999999999986923,
+        "corr_up": 51.83715453043313,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999925931,
-        "corr_up": 9.87393898501429,
+        "raw_score": 0.9999999999980312,
+        "corr_up": 35.20514631089251,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999915093,
-        "corr_up": 19.784610752592986,
+        "raw_score": 0.9999999999979853,
+        "corr_up": 78.46094607861909,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999813011,
-        "corr_up": 2.4441032833509224,
+        "raw_score": 0.9999999999971928,
+        "corr_up": 23.22024532443275,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999825255,
-        "corr_up": 15.49365946869586,
+        "raw_score": 0.9999999999969673,
+        "corr_up": 28.432234353026814,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999837653,
-        "corr_up": 74.90710366719534,
+        "raw_score": 0.9999999999969535,
+        "corr_up": 75.99642399045709,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999964349,
-        "corr_up": 34.411475908100876,
+        "raw_score": 0.9999999999979973,
+        "corr_up": 85.09606287152974,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999970038,
-        "corr_up": 21.063221533272895,
+        "raw_score": 0.9999999999985884,
+        "corr_up": 57.33745857160791,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999970646,
-        "corr_up": 86.73334040512093,
+        "raw_score": 0.9999999999985634,
+        "corr_up": 71.9080295021899,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999971901,
-        "corr_up": 39.54237129510437,
+        "raw_score": 0.999999999998242,
+        "corr_up": 46.74661451653538,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999979248,
-        "corr_up": 39.31505939769622,
+        "raw_score": 0.9999999999961582,
+        "corr_up": 12.506694508512975,
         "corr_down": 0.0
       },
       {
         "prediction": 1,
         "confidence": 1.0,
-        "raw_score": 0.9999999999956634,
-        "corr_up": 12.598392627440763,
+        "raw_score": 0.9999999999955024,
+        "corr_up": 29.781590308541215,
         "corr_down": 0.0
       }
     ]
   },
   "overall": {
-    "accuracy": 0.4811715481171548,
-    "total_chunks": 239,
-    "total_correct": 115
+    "accuracy": 0.4745762711864407,
+    "total_chunks": 236,
+    "total_correct": 112
   },
   "phase_markers": [
     {
       "phase": "baseline",
-      "end_time": 2.1006436003372073,
-      "duration": -2232680.1573706996
+      "end_time": 2.1108630001544952,
+      "duration": -2236884.3125364
     },
     {
       "phase": "top_target",
-      "end_time": 12.198460100218654,
-      "duration": -2232672.1602008
+      "end_time": 12.202071799896657,
+      "duration": -2236876.3321939
     },
     {
       "phase": "transition",
-      "end_time": 13.304032000247389,
-      "duration": -2232681.1524416995
+      "end_time": 13.31310490006581,
+      "duration": -2236885.3123636
     }
   ]
 }

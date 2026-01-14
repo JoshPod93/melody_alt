@@ -127,25 +127,12 @@ class SSVEPStimulus:
     on_completion: Optional[Callable[[], None]] = None
     
     def __post_init__(self) -> None:
-        """Initialize the flickering targets using screen calibration if available."""
-        # Load screen calibration for frequencies and phases
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            
-            # Use calibrated frequencies if available
-            higher_freq, lower_freq = screen_cal.frequencies
-            phase_higher, phase_lower = screen_cal.phases
-            
-            # Update instance frequencies to match calibration
-            self.top_frequency = higher_freq
-            self.bottom_frequency = lower_freq
-        except ImportError:
-            # Fallback to defaults if screen_config not available
-            higher_freq = self.top_frequency
-            lower_freq = self.bottom_frequency
-            phase_higher = 0.0
-            phase_lower = np.pi
+        """Initialize the flickering targets with fixed frequencies."""
+        # Fixed frequencies: 15Hz (UP, 0° phase) and 12Hz (DOWN, 180° phase)
+        higher_freq = self.top_frequency  # Should be 15.0
+        lower_freq = self.bottom_frequency  # Should be 12.0
+        phase_higher = 0.0
+        phase_lower = np.pi
         
         # Top target (higher frequency), phase 0 degrees (0 radians)
         self.top_target = FlickerTarget(

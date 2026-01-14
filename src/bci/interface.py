@@ -656,16 +656,9 @@ class BCICompositionWindow(QMainWindow):
         layout.setSpacing(10)
         layout.setContentsMargins(15, 15, 15, 15)
         
-        # Get frequencies and phases from screen calibration for dynamic widget creation
-        # EXACTLY match screen calibration: each widget creates its own FlickerTarget
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            higher_freq, lower_freq = screen_cal.frequencies
-            phase_higher, phase_lower = screen_cal.phases
-        except ImportError:
-            higher_freq, lower_freq = 15.0, 12.0
-            phase_higher, phase_lower = 0.0, np.pi
+        # Fixed frequencies: 15Hz (UP, 0° phase) and 12Hz (DOWN, 180° phase)
+        higher_freq, lower_freq = 15.0, 12.0
+        phase_higher, phase_lower = 0.0, np.pi
         
         # Top target (higher frequency - UP) with separate indicator
         top_container = QHBoxLayout()
@@ -999,24 +992,9 @@ class BCICompositionWindow(QMainWindow):
         self.status_label.setText("Composition complete! Play or save your score.")
     
     def _check_screen_compatibility(self) -> None:
-        """Check screen calibration compatibility and warn if frequencies aren't factors of refresh rate."""
-        from .screen_config import get_screen_calibration
-        
-        screen_cal = get_screen_calibration()
-        
-        if screen_cal.is_calibrated and screen_cal.refresh_rate_hz:
-            is_compatible, warnings = screen_cal.check_frequency_compatibility()
-            
-            if warnings:
-                warning_msg = "Screen Calibration Warning:\n\n" + "\n".join(warnings)
-                warning_msg += "\n\nThis may cause flickering inconsistencies."
-                warning_msg += "\nConsider adjusting monitor refresh rate or target frequencies."
-                
-                QMessageBox.warning(
-                    self,
-                    "Screen Compatibility Warning",
-                    warning_msg
-                )
+        """Screen compatibility check - simplified: using fixed 15Hz/12Hz frequencies."""
+        # No longer checking screen calibration - using fixed frequencies
+        pass
     
     # REMOVED: _update_stimulus() - no longer needed
     # FlickerWidget's internal timer handles all updates (same as screen calibration)
@@ -1139,13 +1117,8 @@ class BCICompositionWindow(QMainWindow):
                     raw_score=0.0
                 )
             else:
-                # Get frequencies from screen calibration
-                try:
-                    from .screen_config import get_screen_calibration
-                    screen_cal = get_screen_calibration()
-                    higher_freq, lower_freq = screen_cal.frequencies
-                except ImportError:
-                    higher_freq, lower_freq = 15.0, 12.0
+                # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
+                higher_freq, lower_freq = 15.0, 12.0
                 
                 # Simulate user attention based on cursor position
                 current_pitch = self.controller.position.pitch
@@ -1647,13 +1620,8 @@ class BCICompositionWindow(QMainWindow):
         self._cal_trial_duration = 5.0
         self._cal_rest_duration = 2.0
         
-        # Get frequencies for display/comparison
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            self._cal_higher_freq, self._cal_lower_freq = screen_cal.frequencies
-        except ImportError:
-            self._cal_higher_freq, self._cal_lower_freq = 15.0, 12.0
+        # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
+        self._cal_higher_freq, self._cal_lower_freq = 15.0, 12.0
         
         self.status_label.setText("Calibration starting... Get ready!")
         self.canvas.clear()
@@ -2153,15 +2121,9 @@ class BCICompositionWindow(QMainWindow):
                 print("[VALIDATION] Warning: No baseline data collected!")
                 self._validation_baseline_mean = None
             
-            # Get target frequencies from screen calibration
-            try:
-                from .screen_config import get_screen_calibration
-                screen_cal = get_screen_calibration()
-                higher_freq, lower_freq = screen_cal.frequencies
-                print(f"[VALIDATION] Target frequencies: Top={higher_freq:.2f} Hz, Bottom={lower_freq:.2f} Hz")
-            except:
-                higher_freq, lower_freq = 15.0, 12.0
-                print(f"[VALIDATION] Using default frequencies: Top={higher_freq:.2f} Hz, Bottom={lower_freq:.2f} Hz")
+            # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
+            higher_freq, lower_freq = 15.0, 12.0
+            print(f"[VALIDATION] Target frequencies: Top={higher_freq:.2f} Hz, Bottom={lower_freq:.2f} Hz")
             
             # Reset flicker rate tracking
             self.top_target._flicker_state_changes.clear()
@@ -2644,13 +2606,8 @@ class BCICompositionWindow(QMainWindow):
         plot_paths = {}
         sample_rate = self.preprocessor.sample_rate
         
-        # Get target frequencies
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            higher_freq, lower_freq = screen_cal.frequencies
-        except:
-            higher_freq, lower_freq = 15.0, 12.0
+        # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
+        higher_freq, lower_freq = 15.0, 12.0
         
         # Helper function to extract occipital channels and apply baseline removal
         def prepare_raw_data(raw_data, baseline_mean):

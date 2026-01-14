@@ -67,28 +67,19 @@ class CalibrationData:
             timestamps=timestamps
         )
         
-        # Get target frequencies from screen calibration to determine which list to use
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            higher_freq, lower_freq = screen_cal.frequencies
-            
-            # Use tolerance to match frequencies (accounting for calibration differences)
-            if abs(frequency - higher_freq) < 0.5:  # Within 0.5 Hz
+        # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
+        higher_freq, lower_freq = 15.0, 12.0
+        
+        # Use tolerance to match frequencies
+        if abs(frequency - higher_freq) < 0.5:  # Within 0.5 Hz
+            self.trials_15hz.append(trial)
+        elif abs(frequency - lower_freq) < 0.5:  # Within 0.5 Hz
+            self.trials_12hz.append(trial)
+        else:
+            # Fallback: determine by magnitude if frequencies don't match
+            if frequency > (higher_freq + lower_freq) / 2:
                 self.trials_15hz.append(trial)
-            elif abs(frequency - lower_freq) < 0.5:  # Within 0.5 Hz
-                self.trials_12hz.append(trial)
             else:
-                # Fallback: determine by magnitude if frequencies don't match
-                if frequency > (higher_freq + lower_freq) / 2:
-                    self.trials_15hz.append(trial)
-                else:
-                    self.trials_12hz.append(trial)
-        except ImportError:
-            # Fallback to hard-coded check if screen_config unavailable
-            if abs(frequency - 15.0) < 0.5:
-                self.trials_15hz.append(trial)
-            elif abs(frequency - 12.0) < 0.5:
                 self.trials_12hz.append(trial)
         
         # Invalidate templates
@@ -102,14 +93,8 @@ class CalibrationData:
         Uses epoch averaging to extract the consistent SSVEP response
         while canceling out random noise.
         """
-        # Get target frequencies from screen calibration
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            higher_freq, lower_freq = screen_cal.frequencies
-        except ImportError:
-            # Fallback to defaults
-            higher_freq, lower_freq = 15.0, 12.0
+        # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
+        higher_freq, lower_freq = 15.0, 12.0
         
         self._template_15hz = self._compute_template_for_frequency(
             self.trials_15hz, higher_freq, window_seconds
@@ -184,16 +169,9 @@ class CalibrationData:
         if self._template_15hz is None or self._template_12hz is None:
             self.compute_templates(window_seconds)
         
-        # Get target frequencies and phases from screen calibration
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            higher_freq, lower_freq = screen_cal.frequencies
-            higher_phase, lower_phase = screen_cal.phases
-        except ImportError:
-            # Fallback to defaults
-            higher_freq, lower_freq = 15.0, 12.0
-            higher_phase, lower_phase = 0.0, np.pi
+        # Fixed frequencies: 15Hz (UP, 0° phase) and 12Hz (DOWN, 180° phase)
+        higher_freq, lower_freq = 15.0, 12.0
+        higher_phase, lower_phase = 0.0, np.pi
         
         window_samples = int(window_seconds * self.sample_rate)
         
@@ -465,17 +443,11 @@ class CalibrationSession:
         """
         Get the sequence of frequencies for calibration.
         
-        Uses actual screen calibration frequencies and alternates between them
-        to reduce order effects.
+        Uses fixed frequencies: 15Hz (UP) and 12Hz (DOWN).
+        Alternates between them to reduce order effects.
         """
-        # Get actual frequencies from screen calibration
-        try:
-            from .screen_config import get_screen_calibration
-            screen_cal = get_screen_calibration()
-            higher_freq, lower_freq = screen_cal.frequencies
-        except ImportError:
-            # Fallback to defaults if screen_config unavailable
-            higher_freq, lower_freq = 15.0, 12.0
+        # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
+        higher_freq, lower_freq = 15.0, 12.0
         
         sequence = []
         for i in range(self.n_trials_per_frequency):
