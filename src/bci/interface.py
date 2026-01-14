@@ -15,6 +15,7 @@ import sys
 import time
 import json
 import numpy as np
+from numpy.typing import NDArray
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Tuple
@@ -36,8 +37,10 @@ from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
 
 from .stimulus import SSVEPStimulus, FlickerState
+from .p300_stimulus import P300Stimulus, FlashState
 from .preprocessing import EEGPreprocessor, SimulatedEEGSource, LSLPreprocessor
 from .classifier import SSVEPClassifier, AttentionTarget, ClassificationResult
+from .p300_classifier import P300Classifier
 from .controller import BCICursorController, ControllerState, CursorPosition
 from .score import BCIScore, play_score, synthesize_score
 from .calibration import CalibrationData, CalibrationSession
@@ -54,6 +57,84 @@ class SessionMode(Enum):
     COMPOSING = 1
     PLAYBACK = 2
     CALIBRATING = 3
+
+
+class P300FlashWidget(QWidget):
+    """
+    Widget displaying a P300 flash target.
+    
+    Renders a rectangle that flashes discretely for P300 ERP paradigm.
+    """
+    
+    def __init__(
+        self,
+        position: str = "top",
+        parent: Optional[QWidget] = None
+    ):
+        super().__init__(parent)
+        self.position = position
+        self._is_active = False
+        
+        # Create P300 flash target
+        from .p300_stimulus import P300FlashTarget
+        self.target = P300FlashTarget(position=position)
+        
+        # Colors
+        self.color_on = QColor(255, 255, 255)
+        self.color_off = QColor(30, 30, 30)
+        self.border_color = QColor(100, 100, 100)
+        
+        # Size
+        self.setMinimumSize(100, 100)
+        self.setMaximumHeight(100)
+        self.setMaximumWidth(100)
+        
+        # Qt optimizations
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        
+        # Timer for updates
+        self._update_timer = QTimer()
+        self._update_timer.timeout.connect(self.update)
+    
+    def paintEvent(self, event) -> None:
+        """Paint the flash target."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Get current state
+        if self._is_active:
+            state = self.target.get_state()
+            is_flashing = (state == FlashState.FLASHING)
+        else:
+            is_flashing = False
+        
+        # Choose color
+        color = self.color_on if is_flashing else self.color_off
+        
+        # Draw rectangle
+        rect = self.rect()
+        painter.fillRect(rect, QColor(*color))
+        
+        # Draw border
+        painter.setPen(QPen(self.border_color, 2))
+        painter.drawRect(rect.adjusted(1, 1, -1, -1))
+    
+    def set_active(self, active: bool) -> None:
+        """Set whether the target is active."""
+        self._is_active = active
+        if active:
+            self.target.start()
+            self._update_timer.start(16)  # ~60Hz update rate
+        else:
+            self._update_timer.stop()
+        self.update()
+    
+    def update_flash(self) -> None:
+        """Update flash state (called by stimulus system)."""
+        if self._is_active:
+            self.target.update()
+            self.update()
 
 
 class FlickerWidget(QWidget):
@@ -588,10 +669,15 @@ class BCICompositionWindow(QMainWindow):
         
         self.setMinimumSize(1000, 700)
         
-        # BCI components
-        self.stimulus = SSVEPStimulus(duration=10.0)
-        self.classifier = SSVEPClassifier()
+        # BCI components - P300 paradigm
+        self.stimulus = P300Stimulus(duration=10.0, flash_duration_ms=150, isi_ms=750)
+        self.classifier = P300Classifier(sample_rate=250.0)
         self.controller = BCICursorController(duration=10.0)
+        
+        # Flash onset tracking for epoching
+        self._flash_onsets: List[Tuple[str, float]] = []
+        self._eeg_buffer: List[Tuple[NDArray, float]] = []  # (samples, timestamp)
+        self._buffer_max_seconds: float = 2.0  # Keep 2 seconds of data for epoching
         
         # Check screen calibration compatibility
         self._check_screen_compatibility()
@@ -656,15 +742,12 @@ class BCICompositionWindow(QMainWindow):
         layout.setSpacing(10)
         layout.setContentsMargins(15, 15, 15, 15)
         
-        # Fixed frequencies: 15Hz (UP, 0° phase) and 12Hz (DOWN, 180° phase)
-        higher_freq, lower_freq = 15.0, 12.0
-        phase_higher, phase_lower = 0.0, np.pi
-        
-        # Top target (higher frequency - UP) with separate indicator
+        # P300 flash targets
+        # Top target (UP) with separate indicator
         top_container = QHBoxLayout()
         top_container.setSpacing(10)
         self.top_indicator = IndicatorLight()
-        self.top_target = FlickerWidget(higher_freq, phase_higher, "top")
+        self.top_target = P300FlashWidget("top")
         top_container.addWidget(self.top_indicator)
         top_container.addWidget(self.top_target)
         top_container.addStretch()
@@ -676,11 +759,11 @@ class BCICompositionWindow(QMainWindow):
         self.canvas = CompositionCanvas()
         layout.addWidget(self.canvas, stretch=1)
         
-        # Bottom target (lower frequency - DOWN) with separate indicator
+        # Bottom target (DOWN) with separate indicator
         bottom_container = QHBoxLayout()
         bottom_container.setSpacing(10)
         self.bottom_indicator = IndicatorLight()
-        self.bottom_target = FlickerWidget(lower_freq, phase_lower, "bottom")
+        self.bottom_target = P300FlashWidget("bottom")
         bottom_container.addWidget(self.bottom_indicator)
         bottom_container.addWidget(self.bottom_target)
         bottom_container.addStretch()

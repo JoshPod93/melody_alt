@@ -64,8 +64,8 @@ class EEGPreprocessor:
     """
     sample_rate: float = 256.0
     n_channels: int = 8
-    bandpass_low: float = 11.0   # Lower cutoff: focus on SSVEP range (12-15 Hz), reduce noise
-    bandpass_high: float = 30.0  # Upper cutoff: include harmonics up to 30 Hz (15Hz*2, 12Hz*2)
+    bandpass_low: float = 0.1   # Lower cutoff: P300 ERP needs low frequencies (was 11.0 for SSVEP)
+    bandpass_high: float = 30.0  # Upper cutoff: include frequencies up to 30 Hz
     notch_freq: float = 50.0     # 50Hz for EU, 60Hz for US
     buffer_seconds: float = 2.0   # 2 second rolling buffer
     use_car: bool = True  # Common Average Reference - CRITICAL for SSVEP signal quality
