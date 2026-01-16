@@ -522,9 +522,11 @@ class MotorImageryClassifier:
             effective_threshold = self.threshold if self._lda is not None and hasattr(self._lda, 'classes_') else 0.1
             if avg_confidence < effective_threshold:
                 smoothed_target = AttentionTarget.NONE
-            elif avg_raw_score > 0:
+            elif avg_raw_score < 0:
+                # Negative score = C3 < C4 = left hand imagery = UP
                 smoothed_target = AttentionTarget.UP
             else:
+                # Positive score = C3 > C4 = right hand imagery = DOWN
                 smoothed_target = AttentionTarget.DOWN
             
             # Average left/right scores
