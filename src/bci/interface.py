@@ -558,7 +558,7 @@ class CompositionCanvas(QWidget):
         # Composition state
         self._trail: List[Tuple[float, float]] = []
         self._cursor_pos: Optional[CursorPosition] = None
-        self._duration: float = 10.0
+        self._duration: float = 30.0
         self._progress: float = 0.0
         self._is_composing: bool = False
         
@@ -763,11 +763,11 @@ class BCICompositionWindow(QMainWindow):
         self.setMinimumSize(1000, 700)
         
         # BCI components - Motor Imagery paradigm
-        self.stimulus = MotorImageryStimulus(duration=10.0)
+        self.stimulus = MotorImageryStimulus(duration=30.0)
         # Use 1.0s window (64 samples at 64Hz) - optimal for motor imagery (matches MI-PLVGAT literature)
         # Classifier uses 64Hz (after downsampling from 250Hz input)
         self.classifier = MotorImageryClassifier(sample_rate=64.0, window_seconds=1.0)
-        self.controller = BCICursorController(duration=10.0)
+        self.controller = BCICursorController(duration=30.0)
         
         # EEG buffer for continuous classification
         self._eeg_buffer: List[Tuple[NDArray, float]] = []  # (samples, timestamp)
@@ -909,7 +909,7 @@ class BCICompositionWindow(QMainWindow):
         settings_layout.addWidget(QLabel("Duration:"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(5, 60)
-        self.duration_spin.setValue(10)
+        self.duration_spin.setValue(30)
         self.duration_spin.setSuffix(" s")
         self.duration_spin.valueChanged.connect(self._update_duration)
         settings_layout.addWidget(self.duration_spin)

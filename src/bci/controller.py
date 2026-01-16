@@ -53,7 +53,7 @@ class BCICursorController:
         start_pitch: Starting pitch position (default 0.5 = center)
         smoothing: Amount of smoothing for vertical movement (0-1)
     """
-    duration: float = 10.0
+    duration: float = 30.0
     vertical_speed: float = 0.5  # MUCH FASTER - big jumps!
     pitch_min: float = 0.0
     pitch_max: float = 1.0
@@ -317,7 +317,7 @@ class RandomController:
         change_interval: How often to change direction (seconds)
         vertical_speed: Speed of movement
     """
-    duration: float = 10.0
+    duration: float = 30.0
     change_interval: float = 1.0
     vertical_speed: float = 0.15
     

@@ -43,8 +43,8 @@ class FrequencyTable:
     name: str
     frequencies: NDArray[np.float64] = field(default_factory=lambda: np.zeros(16384))
     scale_type: ScaleType = ScaleType.CONTINUOUS
-    min_freq: float = 20.0
-    max_freq: float = 20000.0
+    min_freq: float = 50.0
+    max_freq: float = 2000.0
     
     # Default table size matching original UPIC (16K entries)
     TABLE_SIZE: int = 16384
@@ -63,8 +63,8 @@ class FrequencyTable:
     def continuous(
         cls,
         name: str = "Continuous",
-        min_freq: float = 20.0,
-        max_freq: float = 20000.0,
+        min_freq: float = 50.0,
+        max_freq: float = 2000.0,
         logarithmic: bool = True
     ) -> FrequencyTable:
         """
