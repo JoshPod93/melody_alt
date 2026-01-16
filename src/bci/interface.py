@@ -1213,6 +1213,9 @@ class BCICompositionWindow(QMainWindow):
         self.right_indicator.set_active(False)
         self.canvas.set_composing(False)
         
+        # Save EEG data and classification results before finalizing
+        self._save_session_data()
+        
         self._finalize_score()
         
         self._mode = SessionMode.IDLE
@@ -1594,6 +1597,125 @@ class BCICompositionWindow(QMainWindow):
                 f"Failed to finalize score:\n\n{str(e)}\n\nCheck console for details."
             )
             self.status_label.setText(f"Error: {str(e)}")
+    
+    def _save_baseline_data(self, baseline_data: NDArray) -> None:
+        """Save baseline data to disk for analysis."""
+        try:
+            if not hasattr(self, '_session_log_dir') or self._session_log_dir is None:
+                # Create session directory if it doesn't exist
+                from datetime import datetime
+                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                self._session_log_dir = Path("motor_imagery_sessions") / timestamp_str
+                self._session_log_dir.mkdir(parents=True, exist_ok=True)
+            
+            baseline_file = self._session_log_dir / "baseline_data.npy"
+            np.save(baseline_file, baseline_data)
+            print(f"[DATA SAVE] Baseline data saved: {baseline_file} (shape: {baseline_data.shape})")
+            
+            # Also save baseline statistics
+            if self.classifier.has_baseline:
+                baseline_stats = {
+                    "mu_mean": self.classifier._baseline_mu_mean.tolist(),
+                    "mu_std": self.classifier._baseline_mu_std.tolist(),
+                    "beta_mean": self.classifier._baseline_beta_mean.tolist(),
+                    "beta_std": self.classifier._baseline_beta_std.tolist(),
+                    "mu_power": float(self.classifier._baseline_mu_power),
+                    "beta_power": float(self.classifier._baseline_beta_power),
+                    "sample_rate": float(self.classifier.sample_rate),
+                    "duration_seconds": float(baseline_data.shape[0] / self.classifier.sample_rate)
+                }
+                baseline_stats_file = self._session_log_dir / "baseline_stats.json"
+                with open(baseline_stats_file, 'w') as f:
+                    json.dump(baseline_stats, f, indent=2)
+                print(f"[DATA SAVE] Baseline statistics saved: {baseline_stats_file}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save baseline data: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _save_session_data(self) -> None:
+        """Save live composition EEG data and classification results to disk."""
+        try:
+            if not hasattr(self, '_session_log_dir') or self._session_log_dir is None:
+                print("[DATA SAVE] No session directory - skipping data save")
+                return
+            
+            # Save EEG data from buffer
+            if hasattr(self, '_eeg_log_buffer') and len(self._eeg_log_buffer) > 0:
+                # Convert buffer to numpy array
+                all_eeg_data = []
+                eeg_timestamps = []
+                for entry in self._eeg_log_buffer:
+                    all_eeg_data.append(np.array(entry["data"]))
+                    eeg_timestamps.append(entry["timestamp"])
+                
+                if len(all_eeg_data) > 0:
+                    eeg_array = np.vstack(all_eeg_data)
+                    eeg_file = self._session_log_dir / "eeg_data.npy"
+                    np.save(eeg_file, eeg_array)
+                    print(f"[DATA SAVE] EEG data saved: {eeg_file} (shape: {eeg_array.shape}, {len(eeg_timestamps)} chunks)")
+                    
+                    # Save timestamps
+                    timestamps_file = self._session_log_dir / "eeg_timestamps.npy"
+                    np.save(timestamps_file, np.array(eeg_timestamps))
+                    print(f"[DATA SAVE] EEG timestamps saved: {timestamps_file}")
+            else:
+                print("[DATA SAVE] No EEG data in buffer to save")
+            
+            # Save classification results
+            if hasattr(self, '_classification_results') and len(self._classification_results) > 0:
+                classification_data = []
+                for i, result in enumerate(self._classification_results):
+                    classification_data.append({
+                        "target": result.target.name,
+                        "target_value": result.target.value,
+                        "confidence": float(result.confidence),
+                        "left_score": float(result.left_score),
+                        "right_score": float(result.right_score),
+                        "raw_score": float(result.raw_score),
+                        "time": float(self._classification_times[i]) if i < len(self._classification_times) else 0.0
+                    })
+                
+                classifications_file = self._session_log_dir / "classifications.json"
+                with open(classifications_file, 'w') as f:
+                    json.dump(classification_data, f, indent=2)
+                print(f"[DATA SAVE] Classification results saved: {classifications_file} ({len(classification_data)} results)")
+            else:
+                print("[DATA SAVE] No classification results to save")
+            
+            # Save cursor trail
+            if hasattr(self, 'controller') and hasattr(self.controller, 'get_trail_as_tuples'):
+                trail = self.controller.get_trail_as_tuples()
+                if len(trail) > 0:
+                    trail_file = self._session_log_dir / "cursor_trail.npy"
+                    np.save(trail_file, np.array(trail))
+                    print(f"[DATA SAVE] Cursor trail saved: {trail_file} ({len(trail)} points)")
+            
+            # Update metadata with data file info
+            if hasattr(self, '_log_metadata_file') and self._log_metadata_file.exists():
+                try:
+                    with open(self._log_metadata_file, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    metadata['data_files'] = {
+                        'baseline': 'baseline_data.npy' if (self._session_log_dir / "baseline_data.npy").exists() else None,
+                        'eeg': 'eeg_data.npy' if (self._session_log_dir / "eeg_data.npy").exists() else None,
+                        'classifications': 'classifications.json' if (self._session_log_dir / "classifications.json").exists() else None,
+                        'cursor_trail': 'cursor_trail.npy' if (self._session_log_dir / "cursor_trail.npy").exists() else None
+                    }
+                    metadata['n_classifications'] = len(self._classification_results) if hasattr(self, '_classification_results') else 0
+                    metadata['n_eeg_chunks'] = len(self._eeg_log_buffer) if hasattr(self, '_eeg_log_buffer') else 0
+                    
+                    with open(self._log_metadata_file, 'w') as f:
+                        json.dump(metadata, f, indent=2)
+                    print(f"[DATA SAVE] Metadata updated: {self._log_metadata_file}")
+                except Exception as e:
+                    print(f"[ERROR] Failed to update metadata: {e}")
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to save session data: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _calculate_performance_metrics(self) -> dict:
         """Calculate performance metrics from composition session."""
@@ -2428,6 +2550,10 @@ class BCICompositionWindow(QMainWindow):
                         
                         if success:
                             print(f"[BASELINE DEBUG] Baseline capture successful: has_baseline={self.classifier.has_baseline}")
+                            
+                            # Save baseline data to disk for analysis
+                            self._save_baseline_data(all_baseline)
+                            
                             self.status_label.setText("Baseline captured successfully! You can now start composition.")
                             QMessageBox.information(
                                 self,
