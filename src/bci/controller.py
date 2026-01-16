@@ -228,19 +228,23 @@ class BCICursorController:
         Calculate target velocity from classification result.
         
         Args:
-            classification: SSVEP classification result
+            classification: Classification result (SSVEP or Motor Imagery)
             
         Returns:
             Target velocity (positive = up, negative = down)
         """
-        if classification.target == AttentionTarget.NONE:
+        # Use duck typing - check target value instead of enum type
+        # Both SSVEP and Motor Imagery use same enum values: NONE=0, UP=1, DOWN=2
+        target_value = classification.target.value if hasattr(classification.target, 'value') else int(classification.target)
+        
+        if target_value == 0:  # NONE
             return 0.0
         
         # Base velocity scaled by confidence
         velocity = self.vertical_speed * classification.confidence
         
-        # Direction based on target
-        if classification.target == AttentionTarget.DOWN:
+        # Direction based on target (DOWN = 2)
+        if target_value == 2:  # DOWN
             velocity = -velocity
         
         return velocity

@@ -87,6 +87,7 @@ class EEGPreprocessor:
     # Filter states for real-time filtering (per channel)
     _bp_zi: List[NDArray] = field(init=False, repr=False)
     _notch_zi: List[NDArray] = field(init=False, repr=False)
+    _notch_enabled: bool = field(init=False, repr=False, default=True)
     
     # Artifact detection thresholds
     artifact_threshold: float = 5.0  # Amplitude-based artifact threshold (std devs)
@@ -130,23 +131,43 @@ class EEGPreprocessor:
         self._bandpass_filter = FilterCoefficients(b=b, a=a)
         
         # Notch filter for powerline noise
-        notch_low = (self.notch_freq - 2) / nyquist
-        notch_high = (self.notch_freq + 2) / nyquist
-        notch_low = max(0.001, min(notch_low, 0.99))
-        notch_high = max(notch_low + 0.01, min(notch_high, 0.99))
-        
-        b_notch, a_notch = signal.butter(2, [notch_low, notch_high], btype='bandstop')
-        self._notch_filter = FilterCoefficients(b=b_notch, a=a_notch)
+        # Only apply if notch frequency is below Nyquist (otherwise it's already filtered out)
+        if self.notch_freq < nyquist:
+            notch_low = (self.notch_freq - 2) / nyquist
+            notch_high = (self.notch_freq + 2) / nyquist
+            notch_low = max(0.001, min(notch_low, 0.99))
+            notch_high = max(notch_low + 0.01, min(notch_high, 0.99))
+            
+            b_notch, a_notch = signal.butter(2, [notch_low, notch_high], btype='bandstop')
+            self._notch_filter = FilterCoefficients(b=b_notch, a=a_notch)
+            self._notch_enabled = True
+        else:
+            # Notch frequency is above Nyquist - no need to filter (already removed by downsampling)
+            # Create a proper first-order pass-through filter (identity filter)
+            # b=[1.0] and a=[1.0] is a valid identity filter for scipy.signal.lfilter
+            b_notch = np.array([1.0])
+            a_notch = np.array([1.0])
+            self._notch_filter = FilterCoefficients(b=b_notch, a=a_notch)
+            self._notch_enabled = False
+            print(f"[FILTER] Notch filter disabled: {self.notch_freq}Hz is above Nyquist ({nyquist:.1f}Hz) for {self.sample_rate}Hz sample rate")
         
         # Initialize filter states for each channel
         self._bp_zi = [
             signal.lfilter_zi(self._bandpass_filter.b, self._bandpass_filter.a)
             for _ in range(self.n_channels)
         ]
-        self._notch_zi = [
-            signal.lfilter_zi(self._notch_filter.b, self._notch_filter.a)
-            for _ in range(self.n_channels)
-        ]
+        # For notch filter, only initialize zi if it's a real filter (not pass-through)
+        if self._notch_enabled:
+            self._notch_zi = [
+                signal.lfilter_zi(self._notch_filter.b, self._notch_filter.a)
+                for _ in range(self.n_channels)
+            ]
+        else:
+            # Pass-through filter: zi is just zeros (no state needed)
+            self._notch_zi = [
+                np.array([0.0])  # Single-element zi for identity filter
+                for _ in range(self.n_channels)
+            ]
         
         # Initialize physics-based denoising filters
         if self.enable_muscle_artifact_detection:
@@ -247,15 +268,18 @@ class EEGPreprocessor:
                 zi=self._bp_zi[ch]
             )
             
-            # Apply notch filter
-            notch_out, self._notch_zi[ch] = signal.lfilter(
-                self._notch_filter.b,
-                self._notch_filter.a,
-                bp_out,
-                zi=self._notch_zi[ch]
-            )
-            
-            filtered[ch] = notch_out[0]
+            # Apply notch filter (or pass through if disabled)
+            if self._notch_enabled:
+                notch_out, self._notch_zi[ch] = signal.lfilter(
+                    self._notch_filter.b,
+                    self._notch_filter.a,
+                    bp_out,
+                    zi=self._notch_zi[ch]
+                )
+                filtered[ch] = notch_out[0]
+            else:
+                # Notch disabled (above Nyquist) - just pass through
+                filtered[ch] = bp_out[0]
         
         # Update running statistics
         self._update_statistics(filtered)
@@ -308,13 +332,17 @@ class EEGPreprocessor:
         
         # STEP 2: Apply filters channel by channel (but vectorized per channel)
         for ch in range(self.n_channels):
-            # Notch filter first (needed for both paths)
-            notch_out, self._notch_zi[ch] = signal.lfilter(
-                self._notch_filter.b,
-                self._notch_filter.a,
-                chunk[:, ch],
-                zi=self._notch_zi[ch]
-            )
+            # Notch filter first (needed for both paths), or pass through if disabled
+            if self._notch_enabled:
+                notch_out, self._notch_zi[ch] = signal.lfilter(
+                    self._notch_filter.b,
+                    self._notch_filter.a,
+                    chunk[:, ch],
+                    zi=self._notch_zi[ch]
+                )
+            else:
+                # Notch disabled (above Nyquist) - just pass through
+                notch_out = chunk[:, ch]
             
             # Store CAR + notch only for FBCCA
             raw_filtered[:, ch] = notch_out

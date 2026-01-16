@@ -1,0 +1,15 @@
+{
+  "timestamp": "20260116_153022",
+  "duration": 10,
+  "paradigm": "motor_imagery",
+  "lsl_connected": true,
+  "device": null,
+  "data_files": {
+    "baseline": null,
+    "eeg": "eeg_data.npy",
+    "classifications": "classifications.json",
+    "cursor_trail": "cursor_trail.npy"
+  },
+  "n_classifications": 82,
+  "n_eeg_chunks": 91
+}

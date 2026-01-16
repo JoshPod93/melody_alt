@@ -1,0 +1,713 @@
+[
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8278471597992201,
+    "left_score": 0.17215284020077992,
+    "right_score": 0.8278471597992201,
+    "raw_score": 1.1556522155785367,
+    "time": 1.4668124001473188
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.842116124128653,
+    "left_score": 0.15788387587134692,
+    "right_score": 0.842116124128653,
+    "raw_score": 1.282608686597396,
+    "time": 1.5804059002548456
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8087185842075708,
+    "left_score": 0.1912814157924292,
+    "right_score": 0.8087185842075708,
+    "raw_score": 1.0673638041695306,
+    "time": 1.6856745001859963
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.7222602728271926,
+    "left_score": 0.30844690573740097,
+    "right_score": 0.6915530942625991,
+    "raw_score": 0.6793444871175259,
+    "time": 1.8028486999683082
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.7280928546922291,
+    "left_score": 0.41674796470902176,
+    "right_score": 0.5832520352909782,
+    "raw_score": 0.3383538557069171,
+    "time": 1.9137194002978504
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.6732488383460278,
+    "left_score": 0.49053025005199696,
+    "right_score": 0.509469749948003,
+    "raw_score": 0.09083150274352927,
+    "time": 2.017309700138867
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.6964884213995849,
+    "left_score": 0.44412332344697764,
+    "right_score": 0.5558766765530223,
+    "raw_score": 0.2481032870726106,
+    "time": 2.1220195000059903
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.7378176372582979,
+    "left_score": 0.5797077418474925,
+    "right_score": 0.4202922581525075,
+    "raw_score": -0.32891809755611523,
+    "time": 2.234265200328082
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.793338337388027,
+    "left_score": 0.6578155698930509,
+    "right_score": 0.34218443010694916,
+    "raw_score": -0.6560437170769737,
+    "time": 2.351308500394225
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8305646025247415,
+    "left_score": 0.5053506154924258,
+    "right_score": 0.49464938450757423,
+    "raw_score": 0.46185038213375146,
+    "time": 2.4664332000538707
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8783423174557694,
+    "left_score": 0.38997190431775985,
+    "right_score": 0.6100280956822401,
+    "raw_score": 1.5527058310947972,
+    "time": 2.583084700163454
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.888328746585727,
+    "left_score": 0.33109808452115796,
+    "right_score": 0.668901915478842,
+    "raw_score": 2.38455303378591,
+    "time": 2.6833890001289546
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.892706851492016,
+    "left_score": 0.2028022222692161,
+    "right_score": 0.7971977777307839,
+    "raw_score": 3.3966166703505047,
+    "time": 2.7986688003875315
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.1805264431838856,
+    "time": 2.9245574004016817
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.28694420759996,
+    "time": 3.032097900286317
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.304298496213709,
+    "time": 3.145881799980998
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.316765911937802,
+    "time": 3.2484516999684274
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.3418432360569446,
+    "time": 3.3644377002492547
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.326060887418466,
+    "time": 3.4650940001010895
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.363196940166176,
+    "time": 3.5818019001744688
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.10197809852530781,
+    "right_score": 0.8980219014746922,
+    "raw_score": 4.477262967265906,
+    "time": 3.6872803000733256
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8814330214704718,
+    "left_score": 0.2976675659742566,
+    "right_score": 0.7023324340257434,
+    "raw_score": 2.9752081607803738,
+    "time": 3.8144849999807775
+  },
+  {
+    "target": "DOWN",
+    "target_value": 2,
+    "confidence": 0.8835066314709994,
+    "left_score": 0.4854847299963071,
+    "right_score": 0.5145152700036928,
+    "raw_score": 0.34905531068678464,
+    "time": 3.911611100193113
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.885580241471527,
+    "left_score": 0.6467671005867115,
+    "right_score": 0.35323289941328845,
+    "raw_score": -2.1768974467604596,
+    "time": 4.017236600164324
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8876538514720544,
+    "left_score": 0.7815146777454698,
+    "right_score": 0.21848532225453016,
+    "raw_score": -4.18669662048057,
+    "time": 4.135197900235653
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8897274614725821,
+    "left_score": 0.8897274614725821,
+    "right_score": 0.11027253852741803,
+    "raw_score": -5.879931360697016,
+    "time": 4.2346590999513865
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.654439561844168,
+    "time": 4.350146000273526
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.706972390504187,
+    "time": 4.457700700033456
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.63120399580292,
+    "time": 4.56746460031718
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.665658954300872,
+    "time": 4.679052100051194
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.7065434420648815,
+    "time": 4.784506200347096
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.716096387432199,
+    "time": 4.895381200127304
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.626064091582694,
+    "time": 5.015145200304687
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.538837721915339,
+    "time": 5.129822300281376
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.429262309174007,
+    "time": 5.233112800400704
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.374087815111164,
+    "time": 5.330040200147778
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.201539860153844,
+    "time": 5.4429447003640234
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.076537901002829,
+    "time": 5.5633835000917315
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.98947001878937,
+    "time": 5.6786154001019895
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.973168786328856,
+    "time": 5.781032199971378
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.900616346385851,
+    "time": 5.911204600241035
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.95542393649794,
+    "time": 6.00514110038057
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.957996456910477,
+    "time": 6.129432199988514
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.031215982238411,
+    "time": 6.232371800113469
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.017657676903627,
+    "time": 6.364922000095248
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.041782516443472,
+    "time": 6.449314600322396
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.016480591432304,
+    "time": 6.565744400024414
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.999157956450408,
+    "time": 6.6662431000731885
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.043283601507789,
+    "time": 6.78124519996345
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.0025033563744055,
+    "time": 6.891196300275624
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.94049017467284,
+    "time": 6.999553400091827
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.93186094821385,
+    "time": 7.113528999965638
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.905259505450242,
+    "time": 7.219983800314367
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.809148012321624,
+    "time": 7.330954700242728
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.761732513645725,
+    "time": 7.4328785999678075
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -5.773001014912905,
+    "time": 7.546384800225496
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.011754175843648,
+    "time": 7.660504100378603
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.256014266177688,
+    "time": 7.76301720039919
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.488703338684651,
+    "time": 7.866018200293183
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.694914623807543,
+    "time": 7.979233900085092
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.812318186844531,
+    "time": 8.094270400237292
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.833100003385219,
+    "time": 8.198812700342387
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.872571258000555,
+    "time": 8.299002900253981
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.878587750175735,
+    "time": 8.41537669999525
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.911334809850313,
+    "time": 8.530709099955857
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.936078684508625,
+    "time": 8.630814200267196
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.974526666728059,
+    "time": 8.745591800194234
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.718337432532171,
+    "time": 8.86095970030874
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.755042546193207,
+    "time": 8.962458200287074
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.504902707729446,
+    "time": 9.0626897001639
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.413973736782958,
+    "time": 9.192619000095874
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.288874242906757,
+    "time": 9.297613400034606
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.3566904771156185,
+    "time": 9.42547250026837
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.313326801719229,
+    "time": 9.530341300182045
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.4027031357617155,
+    "time": 9.64302510023117
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.314222438802925,
+    "time": 9.757834600284696
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.2931442804751505,
+    "time": 9.861660700291395
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.215017431791256,
+    "time": 9.975158100016415
+  },
+  {
+    "target": "UP",
+    "target_value": 1,
+    "confidence": 0.8980219014746922,
+    "left_score": 0.8980219014746922,
+    "right_score": 0.10197809852530781,
+    "raw_score": -6.192855929170625,
+    "time": 10.094451600220054
+  }
+]

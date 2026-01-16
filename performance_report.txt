@@ -1,14 +1,14 @@
 ============================================================
 PERFORMANCE REPORT - During Live Data Capture + Preprocessing + Classification
 ============================================================
-Generated: 2026-01-14 17:14:11
+Generated: 2026-01-16 16:34:47
 ============================================================
 
 Classification Performance:
-  Total classifications: 149
-  Classification rate: 14.9 Hz
-  Mean confidence: 0.216
+  Total classifications: 79
+  Classification rate: 7.9 Hz
+  Mean confidence: 0.859
   Target distribution:
-    UP: 141 (94.6%)
-    DOWN: 8 (5.4%)
+    UP: 50 (63.3%)
+    DOWN: 29 (36.7%)
     NONE: 0 (0.0%)

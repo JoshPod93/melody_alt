@@ -507,15 +507,27 @@ class LSLMarkerSender:
         self._outlet = StreamOutlet(info)
         print(f"Marker stream created: {self.stream_name}")
     
-    def send(self, marker: str) -> None:
+    def send(self, marker: str, timestamp: Optional[float] = None) -> None:
         """
         Send a marker.
         
         Args:
             marker: Marker string to send
+            timestamp: Optional LSL timestamp (uses current time if None)
         """
         if self._outlet:
-            self._outlet.push_sample([marker])
+            if timestamp is not None:
+                # Use provided LSL timestamp for proper synchronization
+                self._outlet.push_sample([marker], timestamp)
+            else:
+                # Use current time
+                try:
+                    from pylsl import local_clock
+                    lsl_time = local_clock()
+                    self._outlet.push_sample([marker], lsl_time)
+                except ImportError:
+                    # Fallback if pylsl not available
+                    self._outlet.push_sample([marker])
     
     def send_trial_start(self, trial_id: int) -> None:
         """Send trial start marker."""

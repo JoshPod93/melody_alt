@@ -1,0 +1,53 @@
+================================================================================
+MOTOR IMAGERY BCI - OFFLINE ANALYSIS REPORT
+================================================================================
+
+SESSION METADATA:
+--------------------------------------------------------------------------------
+  timestamp: 20260116_153022
+  duration: 10
+  paradigm: motor_imagery
+  lsl_connected: True
+  device: None
+  data_files: {'baseline': None, 'eeg': 'eeg_data.npy', 'classifications': 'classifications.json', 'cursor_trail': 'cursor_trail.npy'}
+  n_classifications: 82
+  n_eeg_chunks: 91
+
+DATA SUMMARY:
+--------------------------------------------------------------------------------
+  Composition EEG: 2275 samples, 9.10s
+  Classifications: 82 results
+  Cursor trail: 92 points
+
+PREPROCESSING SUMMARY:
+--------------------------------------------------------------------------------
+  Sample rate: 250.0 Hz
+  Window size: 1.0s (250 samples)
+  Mu band: 8.0-13.0 Hz
+  Beta band: 13.0-30.0 Hz
+  Sensorimotor channels: [1, 2, 3] (C3, Cz, C4)
+  CSP components: 4
+  Baseline normalization: Yes
+
+CLASSIFICATION SUMMARY:
+--------------------------------------------------------------------------------
+  Total classifications: 82
+  UP: 61 (74.4%)
+  DOWN: 21 (25.6%)
+  NONE: 0 (0.0%)
+  Mean confidence: 0.705 ± 0.164
+  Mean left score: 0.673 ± 0.194
+  Mean right score: 0.327 ± 0.194
+
+POWER ANALYSIS:
+--------------------------------------------------------------------------------
+  C3 mu power: 0.577419 ± 1.917904
+  C4 mu power: 0.575543 ± 1.913490
+  C3 beta power: 0.702092 ± 2.101592
+  C4 beta power: 0.701865 ± 2.089191
+  C3-C4 mu difference: 0.001876 (C3 > C4)
+  C3-C4 beta difference: 0.000227 (C3 > C4)
+
+================================================================================
+END OF REPORT
+================================================================================
