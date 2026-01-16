@@ -764,8 +764,9 @@ class BCICompositionWindow(QMainWindow):
         
         # BCI components - Motor Imagery paradigm
         self.stimulus = MotorImageryStimulus(duration=10.0)
-        # Use 1.0s window (250 samples) - optimal for motor imagery (matches MI-PLVGAT literature)
-        self.classifier = MotorImageryClassifier(sample_rate=250.0, window_seconds=1.0)
+        # Use 1.0s window (64 samples at 64Hz) - optimal for motor imagery (matches MI-PLVGAT literature)
+        # Classifier uses 64Hz (after downsampling from 250Hz input)
+        self.classifier = MotorImageryClassifier(sample_rate=64.0, window_seconds=1.0)
         self.controller = BCICursorController(duration=10.0)
         
         # EEG buffer for continuous classification
@@ -780,6 +781,7 @@ class BCICompositionWindow(QMainWindow):
         self._lsl_connected = False
         
         # LSL preprocessor (handles both LSL and simulated)
+        # Preprocessor initialized with input rate (250Hz), will downsample to 64Hz internally
         self.preprocessor = LSLPreprocessor(sample_rate=250, n_channels=8)
         
         # Simulated EEG source - ONLY available in dev mode
@@ -1327,7 +1329,7 @@ class BCICompositionWindow(QMainWindow):
             # Pull chunk and add to buffer
             # Motor imagery needs all 8 channels (C3, Cz, C4)
             # Pull 100ms worth of data to match timer interval (aligns with literature)
-            n_samples_per_update = int(0.100 * self.preprocessor.sample_rate)  # 100ms worth (25 samples at 250Hz)
+            n_samples_per_update = int(0.100 * self.preprocessor.sample_rate)  # 100ms worth (~6-7 samples at 64Hz)
             
             # DEBUG: Track pull statistics
             if not hasattr(self, '_pull_count'):
@@ -2497,8 +2499,8 @@ class BCICompositionWindow(QMainWindow):
         baseline_data = []
         baseline_start = time.perf_counter()
         
-        # Use proper pull rate - pull at sample rate (250 Hz = 4ms per sample)
-        # Pull in chunks to avoid blocking - use 100ms chunks (25 samples at 250Hz)
+        # Use proper pull rate - pull at input sample rate (250 Hz = 4ms per sample)
+        # Pull in chunks to avoid blocking - use 100ms chunks (25 samples at 250Hz, ~6-7 after downsampling to 64Hz)
         # This aligns with composition stage pull rate for consistency
         pull_interval_ms = 100  # 100ms chunks (matches composition update rate)
         n_samples_per_pull = int(pull_interval_ms * self.preprocessor.sample_rate / 1000.0)

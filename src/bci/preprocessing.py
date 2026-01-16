@@ -739,8 +739,20 @@ class LSLPreprocessor(EEGPreprocessor):
             )
             
             if self._lsl_receiver.connect(stream_name):
-                # Update sample rate from stream
-                self.sample_rate = self._lsl_receiver.sample_rate
+                # Store input sample rate (actual LSL stream rate, e.g., 250Hz)
+                self._input_sample_rate = self._lsl_receiver.sample_rate
+                
+                # Downsample from input rate to target rate (250Hz -> 64Hz)
+                self._target_sample_rate = 64.0
+                self._downsample_factor = self._input_sample_rate / self._target_sample_rate
+                
+                # Set effective sample rate to target rate (64Hz) for all processing
+                self.sample_rate = self._target_sample_rate
+                
+                # Initialize downsampling buffer
+                if not hasattr(self, '_downsample_buffer'):
+                    from collections import deque
+                    self._downsample_buffer = deque(maxlen=int(self._downsample_factor * 10))  # Buffer for downsampling
                 
                 # Store the actual stream channel count for extraction
                 self._stream_n_channels = self._lsl_receiver.n_channels
@@ -750,10 +762,11 @@ class LSLPreprocessor(EEGPreprocessor):
                 self.n_channels = 8  # Force 8 EEG channels
                 
                 print(f"[LSL] Stream has {self._stream_n_channels} channels, using first 8 (EEG)")
+                print(f"[LSL] Downsampling: {self._input_sample_rate}Hz -> {self._target_sample_rate}Hz (factor: {self._downsample_factor:.3f})")
                 # Note: For motor imagery, all 8 channels are needed (C3, Cz, C4)
                 # For P300, only Cz is used, but we return all channels and let classifier extract what it needs
                 
-                # Reinitialize filters for correct sample rate and 8 channels
+                # Reinitialize filters for target sample rate (64Hz) and 8 channels
                 self._init_filters()
                 self._init_buffer()
                 
@@ -803,12 +816,18 @@ class LSLPreprocessor(EEGPreprocessor):
         self._preprocessor_pull_count += 1
         
         # Pull from LSL (already contains only EEG channels)
-        samples, timestamps = self._lsl_receiver.pull_chunk(n_samples)
+        # Request more samples to account for downsampling
+        if hasattr(self, '_downsample_factor') and self._downsample_factor > 1.0:
+            input_samples_needed = int(n_samples * self._downsample_factor)
+        else:
+            input_samples_needed = n_samples
+        samples, timestamps = self._lsl_receiver.pull_chunk(input_samples_needed)
         
         # DEBUG: Log LSL pull results periodically
         if self._preprocessor_pull_count % 50 == 1:  # Every 50 pulls
             print(f"[PREPROCESSOR PULL DEBUG] Pull #{self._preprocessor_pull_count}: "
-                  f"Requested {n_samples} samples, Got {len(samples)} samples, "
+                  f"Requested {input_samples_needed} input samples (for {n_samples} output), "
+                  f"Got {len(samples)} samples, "
                   f"Shape={samples.shape if len(samples) > 0 else 'empty'}, "
                   f"Timestamps={len(timestamps)}, return_all_channels={return_all_channels}")
             if len(samples) > 0:
@@ -817,6 +836,20 @@ class LSLPreprocessor(EEGPreprocessor):
         
         if len(samples) == 0:
             return np.array([])
+        
+        # Downsample from input rate (250Hz) to target rate (64Hz)
+        if hasattr(self, '_downsample_factor') and self._downsample_factor > 1.0:
+            # Use scipy.signal.resample for proper anti-aliasing
+            n_output_samples = int(len(samples) / self._downsample_factor)
+            if n_output_samples > 0:
+                # Resample each channel independently
+                downsampled = np.zeros((n_output_samples, samples.shape[1]))
+                for ch in range(samples.shape[1]):
+                    downsampled[:, ch] = signal.resample(samples[:, ch], n_output_samples)
+                samples = downsampled
+                
+                if self._preprocessor_pull_count % 50 == 1:
+                    print(f"[PREPROCESSOR PULL DEBUG] Downsampled: {len(samples)} input -> {n_output_samples} output samples")
         
         # Process all EEG channels (needed for CAR)
         processed = self.process_chunk(samples)

@@ -100,8 +100,8 @@ class MotorImageryClassifier:
         sensorimotor_channels: Indices of sensorimotor channels (default: C3=1, Cz=2, C4=3 for Unicorn)
         threshold: Confidence threshold for making a decision
     """
-    sample_rate: float = 250.0  # Unicorn Black sample rate
-    window_seconds: float = 1.0  # Optimal window size for motor imagery (1 second = 250 samples at 250Hz)
+    sample_rate: float = 64.0  # Target sample rate after downsampling (250Hz -> 64Hz)
+    window_seconds: float = 1.0  # Optimal window size for motor imagery (1 second = 64 samples at 64Hz)
     # Note: Literature (MI-PLVGAT, BCI Competition IV-2a) shows 1s windows perform best
     # 2s windows reduce responsiveness and add unnecessary delay
     mu_band: Tuple[float, float] = (8.0, 13.0)  # Mu rhythm band
