@@ -750,7 +750,8 @@ class LSLPreprocessor(EEGPreprocessor):
                 self.n_channels = 8  # Force 8 EEG channels
                 
                 print(f"[LSL] Stream has {self._stream_n_channels} channels, using first 8 (EEG)")
-                print(f"[LSL] Analysis restricted to Cz channel (index 2) for P300")
+                # Note: For motor imagery, all 8 channels are needed (C3, Cz, C4)
+                # For P300, only Cz is used, but we return all channels and let classifier extract what it needs
                 
                 # Reinitialize filters for correct sample rate and 8 channels
                 self._init_filters()
@@ -780,24 +781,39 @@ class LSLPreprocessor(EEGPreprocessor):
         """Check if LSL is connected."""
         return self._lsl_connected and self._lsl_receiver is not None
     
-    def pull_and_process(self, n_samples: int = 16) -> NDArray[np.float64]:
+    def pull_and_process(self, n_samples: int = 16, return_all_channels: bool = False) -> NDArray[np.float64]:
         """
         Pull data from LSL and process it.
         
-        For P300: Returns only Cz channel (index 2) - optimal for P300 ERP.
-        For SSVEP: Returns occipital channels (PO7, Oz, PO8).
-        
         Args:
             n_samples: Number of samples to pull
-            
+            return_all_channels: If True, return all 8 channels. If False, return only Cz (for P300).
+        
         Returns:
-            Processed EEG data (Cz channel only for P300, or occipital for SSVEP)
+            Processed EEG data:
+            - If return_all_channels=True: All 8 channels (n_samples, 8) - for motor imagery
+            - If return_all_channels=False: Only Cz channel (n_samples, 1) - for P300
         """
         if not self.is_lsl_connected:
             return np.array([])
         
+        # DEBUG: Track pull statistics
+        if not hasattr(self, '_preprocessor_pull_count'):
+            self._preprocessor_pull_count = 0
+        self._preprocessor_pull_count += 1
+        
         # Pull from LSL (already contains only EEG channels)
         samples, timestamps = self._lsl_receiver.pull_chunk(n_samples)
+        
+        # DEBUG: Log LSL pull results periodically
+        if self._preprocessor_pull_count % 50 == 1:  # Every 50 pulls
+            print(f"[PREPROCESSOR PULL DEBUG] Pull #{self._preprocessor_pull_count}: "
+                  f"Requested {n_samples} samples, Got {len(samples)} samples, "
+                  f"Shape={samples.shape if len(samples) > 0 else 'empty'}, "
+                  f"Timestamps={len(timestamps)}, return_all_channels={return_all_channels}")
+            if len(samples) > 0:
+                print(f"  Sample range: [{np.min(samples):.4f}, {np.max(samples):.4f}], "
+                      f"Mean={np.mean(samples):.4f}, Std={np.std(samples):.4f}")
         
         if len(samples) == 0:
             return np.array([])
@@ -805,15 +821,30 @@ class LSLPreprocessor(EEGPreprocessor):
         # Process all EEG channels (needed for CAR)
         processed = self.process_chunk(samples)
         
-        # Extract only Cz channel (index 2) for P300
-        # Cz is optimal for P300 ERP detection
-        if processed.shape[1] >= 8:
-            cz_index = 2  # Cz is channel 2 (Fz=0, C3=1, Cz=2, C4=3, Pz=4, PO7=5, Oz=6, PO8=7)
-            cz_data = processed[:, cz_index:cz_index+1]  # Keep 2D shape (n_samples, 1)
-            return cz_data
-        else:
-            # Fallback: return all channels if structure is unexpected
+        if self._preprocessor_pull_count % 50 == 1 and len(processed) > 0:
+            print(f"[PREPROCESSOR PULL DEBUG] Processed shape={processed.shape}, "
+                  f"Channels={processed.shape[1] if len(processed.shape) > 1 else 'N/A'}")
+        
+        # Return all channels for motor imagery, or just Cz for P300
+        if return_all_channels:
+            # Return all 8 channels for motor imagery (needs C3, Cz, C4)
+            if self._preprocessor_pull_count % 50 == 1:
+                print(f"[PREPROCESSOR PULL DEBUG] Returning all {processed.shape[1]} channels")
             return processed
+        else:
+            # Extract only Cz channel (index 2) for P300
+            # Cz is optimal for P300 ERP detection
+            if processed.shape[1] >= 8:
+                cz_index = 2  # Cz is channel 2 (Fz=0, C3=1, Cz=2, C4=3, Pz=4, PO7=5, Oz=6, PO8=7)
+                cz_data = processed[:, cz_index:cz_index+1]  # Keep 2D shape (n_samples, 1)
+                if self._preprocessor_pull_count % 50 == 1:
+                    print(f"[PREPROCESSOR PULL DEBUG] Extracted Cz channel, shape={cz_data.shape}")
+                return cz_data
+            else:
+                # Fallback: return all channels if structure is unexpected
+                if self._preprocessor_pull_count % 50 == 1:
+                    print(f"[PREPROCESSOR PULL DEBUG] WARNING: Unexpected channel count {processed.shape[1]}, returning all")
+                return processed
     
     def get_lsl_buffer(self, seconds: float = 1.0) -> NDArray[np.float64]:
         """

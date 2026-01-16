@@ -38,9 +38,15 @@ from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
 
 from .stimulus import SSVEPStimulus, FlickerState
 from .p300_stimulus import P300Stimulus, P300FlashTarget, FlashState
+from .motor_imagery_stimulus import MotorImageryStimulus, InstructionState
 from .preprocessing import EEGPreprocessor, SimulatedEEGSource, LSLPreprocessor
 from .classifier import SSVEPClassifier, ClassificationResult as SSVEPClassificationResult
 from .p300_classifier import P300Classifier, AttentionTarget, ClassificationResult
+from .motor_imagery_classifier import (
+    MotorImageryClassifier, 
+    ClassificationResult as MIClassificationResult,
+    AttentionTarget as MIAttentionTarget
+)
 from .controller import BCICursorController, ControllerState, CursorPosition
 from .score import BCIScore, play_score, synthesize_score
 from .calibration import CalibrationData, CalibrationSession
@@ -57,6 +63,84 @@ class SessionMode(Enum):
     COMPOSING = 1
     PLAYBACK = 2
     CALIBRATING = 3
+
+
+class MotorImageryInstructionWidget(QWidget):
+    """
+    Widget displaying motor imagery instructions.
+    
+    Shows text instructions: "Imagine LEFT" or "Imagine RIGHT"
+    Also shows baseline indicator when capturing baseline.
+    """
+    
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self._current_instruction: Optional[str] = None
+        self._is_active = False
+        self._baseline_mode = False
+        
+        # Colors
+        self.bg_color = QColor(30, 30, 30)
+        self.text_color = QColor(255, 255, 255)
+        self.highlight_color = QColor(100, 150, 255)
+        self.border_color = QColor(100, 100, 100)
+        self.baseline_bg_color = QColor(50, 50, 100)  # Different background for baseline
+        self.baseline_border_color = QColor(150, 150, 255)  # Highlighted border for baseline
+        
+        # Size
+        self.setMinimumSize(300, 100)
+        self.setMaximumHeight(150)
+        
+        # Font
+        self.font = QFont("Arial", 24, QFont.Weight.Bold)
+        self.baseline_font = QFont("Arial", 20, QFont.Weight.Bold)
+    
+    def paintEvent(self, event) -> None:
+        """Paint the instruction text."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        rect = self.rect()
+        
+        # Draw background - different color for baseline mode
+        if self._baseline_mode:
+            painter.fillRect(rect, self.baseline_bg_color)
+            # Draw pulsing border for baseline
+            border_pen = QPen(self.baseline_border_color, 3)
+        else:
+            painter.fillRect(rect, self.bg_color)
+            border_pen = QPen(self.border_color, 2)
+        
+        # Draw border
+        painter.setPen(border_pen)
+        painter.drawRect(rect.adjusted(1, 1, -1, -1))
+        
+        # Draw instruction text
+        if self._current_instruction:
+            painter.setPen(QPen(self.text_color))
+            if self._baseline_mode:
+                painter.setFont(self.baseline_font)
+            else:
+                painter.setFont(self.font)
+            
+            # Center text
+            text_rect = rect.adjusted(10, 10, -10, -10)
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self._current_instruction)
+    
+    def set_instruction(self, instruction: Optional[str]) -> None:
+        """Set the current instruction text."""
+        self._current_instruction = instruction
+        self.update()
+    
+    def set_active(self, active: bool) -> None:
+        """Set whether the widget is active."""
+        self._is_active = active
+        self.update()
+    
+    def set_baseline_mode(self, baseline: bool) -> None:
+        """Set baseline mode (changes visual appearance)."""
+        self._baseline_mode = baseline
+        self.update()
 
 
 class P300FlashWidget(QWidget):
@@ -678,15 +762,15 @@ class BCICompositionWindow(QMainWindow):
         
         self.setMinimumSize(1000, 700)
         
-        # BCI components - P300 paradigm (optimized timing: 62ms flash, 25ms ISI = 87ms cycle, ~11.5 flashes/sec)
-        self.stimulus = P300Stimulus(duration=10.0, flash_duration_ms=62, isi_ms=25)
-        self.classifier = P300Classifier(sample_rate=250.0)
+        # BCI components - Motor Imagery paradigm
+        self.stimulus = MotorImageryStimulus(duration=10.0)
+        # Use 1.0s window (250 samples) - optimal for motor imagery (matches MI-PLVGAT literature)
+        self.classifier = MotorImageryClassifier(sample_rate=250.0, window_seconds=1.0)
         self.controller = BCICursorController(duration=10.0)
         
-        # Flash onset tracking for epoching
-        self._flash_onsets: List[Tuple[str, str, float]] = []  # (position, color, timestamp)
+        # EEG buffer for continuous classification
         self._eeg_buffer: List[Tuple[NDArray, float]] = []  # (samples, timestamp)
-        self._buffer_max_seconds: float = 2.0  # Keep 2 seconds of data for epoching
+        self._buffer_max_seconds: float = 3.0  # Keep 3 seconds of data for motor imagery
         
         # Check screen calibration compatibility
         self._check_screen_compatibility()
@@ -731,10 +815,10 @@ class BCICompositionWindow(QMainWindow):
         
         self._composition_timer = QTimer()
         self._composition_timer.timeout.connect(self._update_composition)
-        # Use 50ms interval to reduce event loop blocking
-        # This allows flickering to run smoothly while still providing responsive classification
-        # 20Hz update rate is sufficient for BCI control
-        self._composition_timer.setInterval(50)  # 20Hz update rate
+        # Use 100ms interval (10Hz) - aligns with MI literature best practices
+        # MI-PLVGAT and similar systems use 0.1s sliding windows for optimal performance
+        # This provides good responsiveness while allowing proper window accumulation
+        self._composition_timer.setInterval(100)  # 10Hz update rate (matches literature)
         
         # Setup UI
         self._setup_ui()
@@ -751,36 +835,32 @@ class BCICompositionWindow(QMainWindow):
         layout.setSpacing(10)
         layout.setContentsMargins(15, 15, 15, 15)
         
-        # P300 flash targets
-        # Top target (UP) with separate indicator
-        top_container = QHBoxLayout()
-        top_container.setSpacing(10)
-        self.top_indicator = IndicatorLight()
-        # Use stimulus's target instance so color updates are synchronized
-        self.top_target = P300FlashWidget("top", target=self.stimulus.top_target)
-        top_container.addWidget(self.top_indicator)
-        top_container.addWidget(self.top_target)
-        top_container.addStretch()
-        top_widget = QWidget()
-        top_widget.setLayout(top_container)
-        layout.addWidget(top_widget, alignment=Qt.AlignmentFlag.AlignHCenter)
+        # Motor Imagery instruction display
+        instruction_container = QHBoxLayout()
+        instruction_container.addStretch()
+        self.instruction_widget = MotorImageryInstructionWidget()
+        instruction_container.addWidget(self.instruction_widget)
+        instruction_container.addStretch()
+        instruction_widget = QWidget()
+        instruction_widget.setLayout(instruction_container)
+        layout.addWidget(instruction_widget, alignment=Qt.AlignmentFlag.AlignHCenter)
         
         # Composition canvas
         self.canvas = CompositionCanvas()
         layout.addWidget(self.canvas, stretch=1)
         
-        # Bottom target (DOWN) with separate indicator
-        bottom_container = QHBoxLayout()
-        bottom_container.setSpacing(10)
-        self.bottom_indicator = IndicatorLight()
-        # Use stimulus's target instance so color updates are synchronized
-        self.bottom_target = P300FlashWidget("bottom", target=self.stimulus.bottom_target)
-        bottom_container.addWidget(self.bottom_indicator)
-        bottom_container.addWidget(self.bottom_target)
-        bottom_container.addStretch()
-        bottom_widget = QWidget()
-        bottom_widget.setLayout(bottom_container)
-        layout.addWidget(bottom_widget, alignment=Qt.AlignmentFlag.AlignHCenter)
+        # Indicator lights for feedback (left = UP, right = DOWN)
+        indicator_container = QHBoxLayout()
+        indicator_container.addStretch()
+        self.left_indicator = IndicatorLight()
+        self.right_indicator = IndicatorLight()
+        indicator_container.addWidget(self.left_indicator)
+        indicator_container.addSpacing(50)
+        indicator_container.addWidget(self.right_indicator)
+        indicator_container.addStretch()
+        indicator_widget = QWidget()
+        indicator_widget.setLayout(indicator_container)
+        layout.addWidget(indicator_widget, alignment=Qt.AlignmentFlag.AlignHCenter)
         
         # Control panel
         control_panel = self._create_control_panel()
@@ -996,16 +1076,20 @@ class BCICompositionWindow(QMainWindow):
                 )
                 return
             
-            if not self.classifier.is_calibrated:
-                reply = QMessageBox.warning(
+            # Check for baseline (10-second baseline capture required)
+            if not self.classifier.has_baseline:
+                reply = QMessageBox.information(
                     self,
-                    "EXPERIMENT MODE - Calibration Recommended",
-                    "EXPERIMENT MODE is enabled but classifier is NOT calibrated.\n\n"
-                    "Calibration is STRONGLY recommended for accurate results.\n\n"
-                    "Continue without calibration?",
+                    "Baseline Capture Required",
+                    f"Motor Imagery requires a {self.classifier.baseline_duration:.0f}-second baseline capture.\n\n"
+                    "This will record rest data to normalize signals.\n\n"
+                    "Start baseline capture?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
-                if reply != QMessageBox.StandardButton.Yes:
+                if reply == QMessageBox.StandardButton.Yes:
+                    self._capture_baseline()
+                    return  # Will restart composition after baseline completes
+                else:
                     return
         
         self._mode = SessionMode.COMPOSING
@@ -1031,30 +1115,21 @@ class BCICompositionWindow(QMainWindow):
         self.stimulus.duration = float(duration)
         self.canvas.set_duration(float(duration))
         
-        # Generate and verify color sequences BEFORE starting
-        # Duration must be set first since sequence length depends on it
-        print("[P300] Generating and verifying color sequences...")
-        if not self.stimulus.generate_and_verify_sequences():
-            QMessageBox.critical(
-                self,
-                "Sequence Generation Failed",
-                "Failed to generate valid color sequences.\n\n"
-                "This should not happen. Please restart the application."
-            )
-            return
-        
         # Create data logging directory
         from datetime import datetime
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self._session_log_dir = Path("p300_sessions") / timestamp_str
+        self._session_log_dir = Path("motor_imagery_sessions") / timestamp_str
         self._session_log_dir.mkdir(parents=True, exist_ok=True)
         
         # Start
         self.controller.start()
-        # Start P300 stimulus (handles flash timing)
+        # Start motor imagery stimulus (handles instruction timing)
+        print(f"[STIMULUS DEBUG] Starting motor imagery stimulus, duration={self.stimulus.duration}s")
         self.stimulus.start()
-        self._flash_onsets.clear()
+        print(f"[STIMULUS DEBUG] Stimulus started: running={self.stimulus.is_running()}, "
+              f"instruction='{self.stimulus.get_current_instruction()}'")
         self._eeg_buffer.clear()
+        print(f"[STIMULUS DEBUG] EEG buffer cleared, buffer_max_seconds={self._buffer_max_seconds}")
         
         # Initialize logging
         self._log_trigger_file = self._session_log_dir / "triggers.jsonl"
@@ -1065,18 +1140,14 @@ class BCICompositionWindow(QMainWindow):
         metadata = {
             "timestamp": timestamp_str,
             "duration": duration,
-            "flash_duration_ms": self.stimulus.flash_duration_ms,
-            "isi_ms": self.stimulus.isi_ms,
-            "target_probability": self.stimulus.target_probability,
-            "expected_top_sequence": self.stimulus._top_color_sequence,
-            "expected_bottom_sequence": self.stimulus._bottom_color_sequence,
+            "paradigm": "motor_imagery",
             "lsl_connected": self._lsl_connected,
             "device": self.preprocessor._lsl_receiver.stream_name if hasattr(self.preprocessor, '_lsl_receiver') and self.preprocessor._lsl_receiver else None
         }
         with open(self._log_metadata_file, 'w') as f:
             json.dump(metadata, f, indent=2)
         
-        print(f"[P300] Session data logging to: {self._session_log_dir}")
+        print(f"[MOTOR IMAGERY] Session data logging to: {self._session_log_dir}")
         
         # Update UI first
         self.start_btn.setEnabled(False)
@@ -1089,14 +1160,15 @@ class BCICompositionWindow(QMainWindow):
         self.waveform_combo.setEnabled(False)
         self.canvas.set_composing(True)
         
-        # Use same pattern as calibration: small delay before starting flickering
-        # This ensures clean startup and prevents event loop blocking
-        QTimer.singleShot(200, lambda: self._start_composition_flickering())
+        # Activate instruction widget
+        self.instruction_widget.set_active(True)
         
-        # Start composition timer AFTER flickering starts (same pattern as calibration)
-        # This prevents the composition timer from interfering with flickering startup
+        # Start the composition update timer (CRITICAL - was missing!)
+        print(f"[TIMER DEBUG] Starting composition timer, interval={self._composition_timer.interval()}ms")
+        self._composition_timer.start()
+        print(f"[TIMER DEBUG] Timer started: isActive={self._composition_timer.isActive()}")
         
-        self.status_label.setText("Composing... Focus on TOP target to move UP, BOTTOM target to move DOWN")
+        self.status_label.setText("Composing... Free choice - Imagine LEFT to move UP, RIGHT to move DOWN")
     
     def _stop_composition(self) -> None:
         """Stop composition and finalize score."""
@@ -1104,34 +1176,41 @@ class BCICompositionWindow(QMainWindow):
         if self.marker_sender:
             self.marker_sender.send("Composition End")
         
-        # Verify trigger alignment before stopping
-        is_aligned, verification_report = self.stimulus.verify_trigger_alignment()
-        if not is_aligned:
-            print(f"[P300 WARNING] Trigger alignment mismatch detected!")
-            print(f"  Expected: {verification_report['total_expected']} flashes")
-            print(f"  Actual: {verification_report['total_actual']} flashes")
-            print(f"  Top matches: {verification_report['top_matches']}/{len(self.stimulus._top_color_sequence)}")
-            print(f"  Bottom matches: {verification_report['bottom_matches']}/{len(self.stimulus._bottom_color_sequence)}")
-            if verification_report['top_mismatches'] > 0:
-                print(f"  Top mismatches: {verification_report['top_mismatches']}")
-                for mismatch in verification_report['top_mismatch_details'][:5]:  # Show first 5
-                    print(f"    Index {mismatch['index']}: expected {mismatch['expected']}, got {mismatch.get('actual', 'MISSING')}")
-            if verification_report['bottom_mismatches'] > 0:
-                print(f"  Bottom mismatches: {verification_report['bottom_mismatches']}")
-                for mismatch in verification_report['bottom_mismatch_details'][:5]:  # Show first 5
-                    print(f"    Index {mismatch['index']}: expected {mismatch['expected']}, got {mismatch.get('actual', 'MISSING')}")
+        # Verify trigger alignment before stopping (only for P300/SSVEP stimuli)
+        # Motor Imagery uses free-choice paradigm, so no trigger alignment to verify
+        if hasattr(self.stimulus, 'verify_trigger_alignment'):
+            is_aligned, verification_report = self.stimulus.verify_trigger_alignment()
+            if not is_aligned:
+                print(f"[P300 WARNING] Trigger alignment mismatch detected!")
+                print(f"  Expected: {verification_report['total_expected']} flashes")
+                print(f"  Actual: {verification_report['total_actual']} flashes")
+                print(f"  Top matches: {verification_report['top_matches']}/{len(self.stimulus._top_color_sequence)}")
+                print(f"  Bottom matches: {verification_report['bottom_matches']}/{len(self.stimulus._bottom_color_sequence)}")
+                if verification_report['top_mismatches'] > 0:
+                    print(f"  Top mismatches: {verification_report['top_mismatches']}")
+                    for mismatch in verification_report['top_mismatch_details'][:5]:  # Show first 5
+                        print(f"    Index {mismatch['index']}: expected {mismatch['expected']}, got {mismatch.get('actual', 'MISSING')}")
+                if verification_report['bottom_mismatches'] > 0:
+                    print(f"  Bottom mismatches: {verification_report['bottom_mismatches']}")
+                    for mismatch in verification_report['bottom_mismatch_details'][:5]:  # Show first 5
+                        print(f"    Index {mismatch['index']}: expected {mismatch['expected']}, got {mismatch.get('actual', 'MISSING')}")
+            else:
+                print(f"[P300] Trigger alignment verified: {verification_report['total_actual']} flashes match expected sequence")
         else:
-            print(f"[P300] Trigger alignment verified: {verification_report['total_actual']} flashes match expected sequence")
+            # Motor Imagery - no trigger alignment to verify
+            print(f"[MOTOR IMAGERY] Composition stopped (free-choice paradigm, no trigger alignment)")
         
-        # Stop flickering - EXACTLY match screen calibration protocol
-        # Widgets are independent, no need to call stimulus.stop()
-        self.top_target.set_active(False)
-        self.bottom_target.set_active(False)
+        # Stop motor imagery stimulus
+        self.stimulus.stop()
         self._composition_timer.stop()
         
         self.controller.stop()
-        # NOTE: No stimulus.stop() - widgets are independent (same as screen calibration)
-        self.bottom_target.set_active(False)
+        
+        # Stop instruction widget and indicators
+        self.instruction_widget.set_active(False)
+        self.instruction_widget.set_instruction(None)
+        self.left_indicator.set_active(False)
+        self.right_indicator.set_active(False)
         self.canvas.set_composing(False)
         
         self._finalize_score()
@@ -1206,53 +1285,65 @@ class BCICompositionWindow(QMainWindow):
                     )
     
     def _update_composition(self) -> None:
-        """Update composition state - P300 paradigm."""
+        """Update composition state - Motor Imagery paradigm."""
+        # DEBUG: Log that update is being called
+        if not hasattr(self, '_update_call_count'):
+            self._update_call_count = 0
+        self._update_call_count += 1
+        if self._update_call_count % 20 == 1:  # Every 20 calls (~1 second)
+            print(f"[UPDATE DEBUG] _update_composition called #{self._update_call_count}, "
+                  f"Controller state={self.controller.state}")
+        
         if self.controller.state != ControllerState.RUNNING:
+            if self._update_call_count % 20 == 1:
+                print(f"[UPDATE DEBUG] Controller not RUNNING (state={self.controller.state}), returning early")
             if self.controller.state == ControllerState.COMPLETED:
                 self._stop_composition()
             return
         
-        # Update P300 stimulus (handles flash timing)
-        self.stimulus.update()
+        # Update motor imagery stimulus (free choice mode)
+        current_time = time.perf_counter()
+        state, instruction = self.stimulus.update(current_time)
         
-        # Update flash widgets
-        self.top_target.update_flash()
-        self.bottom_target.update_flash()
+        # DEBUG: Verify stimulus is working
+        if not hasattr(self, '_stimulus_update_count'):
+            self._stimulus_update_count = 0
+        self._stimulus_update_count += 1
+        if self._stimulus_update_count % 100 == 1:  # Every 100 updates (~5 seconds at 20Hz)
+            print(f"[STIMULUS DEBUG] Update #{self._stimulus_update_count}: State={state}, "
+                  f"Instruction='{instruction}', Running={self.stimulus.is_running()}")
         
-        # Track flash onsets (for epoching)
-        flash_onsets = self.stimulus.get_flash_onsets()
-        if flash_onsets:
-            # Get new flash onsets since last check
-            if len(flash_onsets) > len(self._flash_onsets):
-                new_onsets = flash_onsets[len(self._flash_onsets):]
-                self._flash_onsets.extend(new_onsets)
-                
-                # Send markers for new flashes (include color info)
-                if self.marker_sender:
-                    for position, color, flash_time in new_onsets:
-                        # Ensure color is a string (not being iterated)
-                        color_str = str(color) if isinstance(color, str) else color
-                        is_target = "TARGET" if color_str == "red" else "NONTARGET"
-                        marker = f"P300_{position.upper()}_{color_str.upper()}_{is_target}"
-                        self.marker_sender.send(marker)
-                        
-                        # Log trigger to file
-                        if hasattr(self, '_log_trigger_file'):
-                            trigger_data = {
-                                "timestamp": flash_time,
-                                "position": position,
-                                "color": color_str,
-                                "is_target": is_target == "TARGET",
-                                "marker": marker
-                            }
-                            with open(self._log_trigger_file, 'a') as f:
-                                f.write(json.dumps(trigger_data) + '\n')
+        # Update instruction widget (shows free choice prompt)
+        self.instruction_widget.set_instruction(instruction)
         
-        # Get EEG data and classify using P300 epoching
+        # Free choice mode - no discrete instruction onsets to track
+        # Classification runs continuously based on user's motor imagery
+        
+        # Get EEG data and classify using motor imagery
         if self._use_lsl and self._lsl_connected:
             # Pull chunk and add to buffer
-            n_samples_per_update = int(0.050 * self.preprocessor.sample_rate)  # 50ms worth
-            processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update)
+            # Motor imagery needs all 8 channels (C3, Cz, C4)
+            # Pull 100ms worth of data to match timer interval (aligns with literature)
+            n_samples_per_update = int(0.100 * self.preprocessor.sample_rate)  # 100ms worth (25 samples at 250Hz)
+            
+            # DEBUG: Track pull statistics
+            if not hasattr(self, '_pull_count'):
+                self._pull_count = 0
+                self._pull_empty_count = 0
+            self._pull_count += 1
+            
+            processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_update, return_all_channels=True)
+            
+            # DEBUG: Log pull results periodically
+            if self._pull_count % 20 == 1:  # Every 20 pulls (~1 second)
+                print(f"[LSL PULL DEBUG] Pull #{self._pull_count}: Requested {n_samples_per_update} samples, "
+                      f"Got {len(processed)} samples, Shape={processed.shape if len(processed) > 0 else 'empty'}")
+            
+            if len(processed) == 0:
+                self._pull_empty_count += 1
+                if self._pull_count % 20 == 1:
+                    print(f"[LSL PULL DEBUG] Empty pull count: {self._pull_empty_count}/{self._pull_count} "
+                          f"({100*self._pull_empty_count/self._pull_count:.1f}%)")
             
             # Log EEG data
             if hasattr(self, '_log_eeg_file') and processed is not None and len(processed) > 0:
@@ -1276,69 +1367,82 @@ class BCICompositionWindow(QMainWindow):
                 
                 # Trim buffer to max duration
                 buffer_start_time = current_time - self._buffer_max_seconds
+                buffer_size_before = len(self._eeg_buffer)
                 self._eeg_buffer = [(data, ts) for data, ts in self._eeg_buffer if ts >= buffer_start_time]
+                buffer_size_after = len(self._eeg_buffer)
                 
-                # Classify using P300 epoching if we have flash onsets
-                if len(self._flash_onsets) >= self.classifier.n_epochs_to_average:
-                    # Reconstruct continuous EEG data with timestamps
-                    if len(self._eeg_buffer) > 0:
-                        all_data = np.vstack([data for data, _ in self._eeg_buffer])
-                        # Create timestamps array - CRITICAL: Use LSL-synchronized timestamps
-                        buffer_times = []
-                        sample_rate = self.preprocessor.sample_rate
-                        for i, (data, ts) in enumerate(self._eeg_buffer):
-                            n_samples = len(data)
-                            # Timestamps are already in LSL time domain
-                            timestamps = np.linspace(ts, ts + (n_samples - 1) / sample_rate, n_samples)
-                            buffer_times.extend(timestamps)
-                        buffer_times = np.array(buffer_times)
+                # DEBUG: Log buffer status periodically
+                if self._pull_count % 20 == 1:
+                    buffer_duration = (self._eeg_buffer[-1][1] - self._eeg_buffer[0][1]) if len(self._eeg_buffer) > 1 else 0.0
+                    total_samples = sum(len(data) for data, _ in self._eeg_buffer)
+                    print(f"[BUFFER DEBUG] Buffer: {buffer_size_before} -> {buffer_size_after} chunks, "
+                          f"Duration={buffer_duration:.2f}s, Total samples={total_samples}")
+                
+                # Classify using motor imagery (continuous classification)
+                if len(self._eeg_buffer) > 0:
+                    # Get recent data for classification window
+                    window_samples = int(self.classifier.window_seconds * self.preprocessor.sample_rate)
+                    all_data = np.vstack([data for data, _ in self._eeg_buffer])
+                    
+                    if self._pull_count % 20 == 1:
+                        print(f"[BUFFER DEBUG] Window: Need {window_samples} samples, Have {len(all_data)} samples")
+                    
+                    if len(all_data) >= window_samples:
+                        # Use most recent window
+                        window_data = all_data[-window_samples:]
                         
-                        # Classify using P300 oddball paradigm
-                        # Flash onsets now include color: (position, color, time)
-                        result = self.classifier.classify_averaged(
-                            all_data,
-                            self._flash_onsets,
-                            buffer_times
-                        )
+                        # Classify using motor imagery
+                        result = self.classifier.classify(window_data, method="default")
                         
                         # Track classification metrics
                         classify_time = time.perf_counter()
                         self._classification_results.append(result)
                         self._classification_times.append(classify_time - self._composition_start_time)
                         
+                        # Update indicator lights
+                        if result.target == MIAttentionTarget.UP:
+                            self.left_indicator.set_active(True)
+                            self.right_indicator.set_active(False)
+                        elif result.target == MIAttentionTarget.DOWN:
+                            self.left_indicator.set_active(False)
+                            self.right_indicator.set_active(True)
+                        else:
+                            self.left_indicator.set_active(False)
+                            self.right_indicator.set_active(False)
+                        
                         # Debug: Log classification results periodically
                         if not hasattr(self, '_last_classify_log_time'):
                             self._last_classify_log_time = 0
                         current_time_log = time.time()
-                        if current_time_log - self._last_classify_log_time > 1.0:  # Log every second
-                            print(f"[P300 CLASSIFY] Target={result.target.name}, Confidence={result.confidence:.2f}, "
-                                  f"Top_amp={result.p300_amplitude_top:.3f}, Bottom_amp={result.p300_amplitude_bottom:.3f}, "
-                                  f"Score={result.raw_score:.3f}")
+                        if current_time_log - self._last_classify_log_time > 0.5:  # Log every 0.5 seconds for debugging
+                            print(f"[MI CLASSIFY] Target={result.target.name}, Confidence={result.confidence:.3f}, "
+                                  f"Left={result.left_score:.3f}, Right={result.right_score:.3f}, "
+                                  f"Score={result.raw_score:.3f}, Window={len(window_data)} samples")
                             self._last_classify_log_time = current_time_log
                     else:
-                        result = ClassificationResult(
-                            target=AttentionTarget.NONE,
+                        # Not enough data yet
+                        result = MIClassificationResult(
+                            target=MIAttentionTarget.NONE,
                             confidence=0.0,
-                            p300_amplitude_top=0.0,
-                            p300_amplitude_bottom=0.0,
+                            left_score=0.0,
+                            right_score=0.0,
                             raw_score=0.0
                         )
                 else:
-                    # Not enough epochs yet - wait
-                    result = ClassificationResult(
-                        target=AttentionTarget.NONE,
+                    result = MIClassificationResult(
+                        target=MIAttentionTarget.NONE,
                         confidence=0.0,
-                        p300_amplitude_top=0.0,
-                        p300_amplitude_bottom=0.0,
+                        left_score=0.0,
+                        right_score=0.0,
                         raw_score=0.0
                     )
             else:
                 # No data available - hold position
-                result = ClassificationResult(
-                    target=AttentionTarget.NONE,
+                result = MIClassificationResult(
+                    target=MIAttentionTarget.NONE,
                     confidence=0.0,
-                    p300_amplitude_top=0.0,
-                    p300_amplitude_bottom=0.0,
+                    left_score=0.0,
+                    right_score=0.0,
                     raw_score=0.0
                 )
         elif self.EXPERIMENT_MODE:
@@ -1356,33 +1460,54 @@ class BCICompositionWindow(QMainWindow):
             # DEV MODE ONLY: Simulated data (disabled in experiments)
             if self.eeg_source is None:
                 # Safety: should not happen, but handle gracefully
-                result = ClassificationResult(
-                    target=AttentionTarget.NONE,
+                result = MIClassificationResult(
+                    target=MIAttentionTarget.NONE,
                     confidence=0.0,
-                    power_higher_freq=0.0,
-                    power_lower_freq=0.0,
+                    left_score=0.0,
+                    right_score=0.0,
                     raw_score=0.0
                 )
             else:
-                # Fixed frequencies: 15Hz (UP) and 12Hz (DOWN)
-                higher_freq, lower_freq = 15.0, 12.0
-                
-                # Simulate user attention based on cursor position
+                # Simulate motor imagery based on cursor position
                 current_pitch = self.controller.position.pitch
-                if current_pitch < 0.4:
-                    self.eeg_source.set_target(higher_freq)  # Attend to UP
-                elif current_pitch > 0.6:
-                    self.eeg_source.set_target(lower_freq)  # Attend to DOWN
-                else:
-                    self.eeg_source.set_target(None)  # No strong attention
+                # For motor imagery simulation, we'd need a different simulation approach
+                # For now, just generate random EEG and classify
                 
                 # Generate and process EEG
                 eeg_chunk = self.eeg_source.generate_chunk(16)
                 processed = self.preprocessor.process_chunk(eeg_chunk)
                 
-                # Classify with CCA
-                eeg_buffer = self.preprocessor.get_recent_data(0.5)
-                result = self.classifier.classify(eeg_buffer, method="cca")
+                # Add to buffer
+                current_time = time.perf_counter()
+                self._eeg_buffer.append((processed, current_time))
+                
+                # Trim buffer
+                buffer_start_time = current_time - self._buffer_max_seconds
+                self._eeg_buffer = [(data, ts) for data, ts in self._eeg_buffer if ts >= buffer_start_time]
+                
+                # Classify with motor imagery
+                if len(self._eeg_buffer) > 0:
+                    all_data = np.vstack([data for data, _ in self._eeg_buffer])
+                    window_samples = int(self.classifier.window_seconds * self.preprocessor.sample_rate)
+                    if len(all_data) >= window_samples:
+                        window_data = all_data[-window_samples:]
+                        result = self.classifier.classify(window_data, method="default")
+                    else:
+                        result = MIClassificationResult(
+                            target=MIAttentionTarget.NONE,
+                            confidence=0.0,
+                            left_score=0.0,
+                            right_score=0.0,
+                            raw_score=0.0
+                        )
+                else:
+                    result = MIClassificationResult(
+                        target=MIAttentionTarget.NONE,
+                        confidence=0.0,
+                        left_score=0.0,
+                        right_score=0.0,
+                        raw_score=0.0
+                    )
         
         # Update controller with classification
         pos = self.controller.update(result)
@@ -1412,18 +1537,13 @@ class BCICompositionWindow(QMainWindow):
                 performance_metrics = {}
             
             try:
-                # P300 doesn't have frequencies, use flash timing instead
+                # Motor imagery metadata
                 metadata = {
                     'simulated': not self._use_lsl,
-                    'paradigm': 'P300',
-                    'flash_duration_ms': self.stimulus.flash_duration_ms,
-                    'isi_ms': self.stimulus.isi_ms,
+                    'paradigm': 'motor_imagery',
+                    'window_seconds': self.classifier.window_seconds,
                     'performance_metrics': performance_metrics
                 }
-                # Add frequency info only if it exists (for SSVEP compatibility)
-                if hasattr(self.stimulus, 'top_frequency'):
-                    metadata['top_frequency'] = self.stimulus.top_frequency
-                    metadata['bottom_frequency'] = self.stimulus.bottom_frequency
                 
                 self.current_score = BCIScore(
                     trail=trail,
@@ -1480,7 +1600,8 @@ class BCICompositionWindow(QMainWindow):
         metrics = {}
         
         # Flicker rate accuracy - calculate from actual flicker cycles
-        if hasattr(self.top_target, '_flicker_state_changes') and len(self.top_target._flicker_state_changes) >= 20:
+        # Only for SSVEP/P300 paradigms (Motor Imagery doesn't have flicker targets)
+        if hasattr(self, 'top_target') and hasattr(self.top_target, '_flicker_state_changes') and len(self.top_target._flicker_state_changes) >= 20:
             top_changes = self.top_target._flicker_state_changes
             intervals = [top_changes[i] - top_changes[i-1] for i in range(1, len(top_changes))]
             if intervals:
@@ -1497,7 +1618,7 @@ class BCICompositionWindow(QMainWindow):
                     'error_pct': top_error_pct
                 }
         
-        if hasattr(self.bottom_target, '_flicker_state_changes') and len(self.bottom_target._flicker_state_changes) >= 20:
+        if hasattr(self, 'bottom_target') and hasattr(self.bottom_target, '_flicker_state_changes') and len(self.bottom_target._flicker_state_changes) >= 20:
             bottom_changes = self.bottom_target._flicker_state_changes
             intervals = [bottom_changes[i] - bottom_changes[i-1] for i in range(1, len(bottom_changes))]
             if intervals:
@@ -1537,6 +1658,27 @@ class BCICompositionWindow(QMainWindow):
                     },
                     'mean_p300_top': np.mean(p300_top),
                     'mean_p300_bottom': np.mean(p300_bottom)
+                }
+            elif hasattr(self._classification_results[0], 'left_score'):
+                # Motor Imagery results
+                left_scores = [r.left_score for r in self._classification_results]
+                right_scores = [r.right_score for r in self._classification_results]
+                raw_scores = [r.raw_score for r in self._classification_results]
+                metrics['classification'] = {
+                    'n_classifications': len(self._classification_results),
+                    'mean_confidence': np.mean(confidences),
+                    'std_confidence': np.std(confidences),
+                    'min_confidence': np.min(confidences),
+                    'max_confidence': np.max(confidences),
+                    'target_distribution': {
+                        'UP': sum(1 for t in targets if t == MIAttentionTarget.UP),
+                        'DOWN': sum(1 for t in targets if t == MIAttentionTarget.DOWN),
+                        'NONE': sum(1 for t in targets if t == MIAttentionTarget.NONE)
+                    },
+                    'mean_left_score': np.mean(left_scores),
+                    'mean_right_score': np.mean(right_scores),
+                    'mean_raw_score': np.mean(raw_scores),
+                    'std_raw_score': np.std(raw_scores)
                 }
             else:
                 # SSVEP results (backward compatibility)
@@ -2193,6 +2335,143 @@ class BCICompositionWindow(QMainWindow):
             self.calibrate_btn.setEnabled(True)
             self.connect_lsl_btn.setEnabled(True)
             self.status_label.setText("Calibration error - see console")
+    
+    def _capture_baseline(self) -> None:
+        """Capture baseline for motor imagery normalization (configurable duration)."""
+        if not self._lsl_connected:
+            QMessageBox.warning(
+                self,
+                "LSL Connection Required",
+                "Please connect to LSL stream first."
+            )
+            return
+        
+        # Use configurable baseline duration from classifier
+        baseline_duration = self.classifier.baseline_duration
+        
+        # Update UI - show visual baseline indicator
+        self.start_btn.setEnabled(False)
+        self.status_label.setText(f"Capturing baseline ({baseline_duration:.1f}s)... Stay relaxed and still")
+        self.instruction_widget.set_instruction("BASELINE - Relax and Stay Still")
+        self.instruction_widget.set_active(True)
+        self.instruction_widget.set_baseline_mode(True)  # Visual indicator for baseline
+        
+        # Send LSL marker with proper timestamp (using LSL clock)
+        if self.marker_sender:
+            try:
+                from pylsl import local_clock
+                lsl_timestamp = local_clock()
+                # Use push_sample with timestamp for proper synchronization
+                if hasattr(self.marker_sender._outlet, 'push_sample'):
+                    self.marker_sender._outlet.push_sample(["Baseline:Start"], lsl_timestamp)
+                else:
+                    self.marker_sender.send("Baseline:Start")
+                print(f"[MI BASELINE] Sent Baseline:Start marker at LSL time {lsl_timestamp:.6f}")
+            except ImportError:
+                # Fallback if pylsl not available
+                self.marker_sender.send("Baseline:Start")
+        
+        # Collect baseline data
+        baseline_data = []
+        baseline_start = time.perf_counter()
+        
+        # Use proper pull rate - pull at sample rate (250 Hz = 4ms per sample)
+        # Pull in chunks to avoid blocking - use 100ms chunks (25 samples at 250Hz)
+        # This aligns with composition stage pull rate for consistency
+        pull_interval_ms = 100  # 100ms chunks (matches composition update rate)
+        n_samples_per_pull = int(pull_interval_ms * self.preprocessor.sample_rate / 1000.0)
+        
+        # Timer to collect data
+        baseline_pull_count = [0]  # Use list to allow modification in nested function
+        baseline_empty_count = [0]
+        
+        def collect_baseline_sample():
+            if self._lsl_connected:
+                # Pull data using proper chunk size
+                # Motor imagery needs all 8 channels for baseline capture
+                baseline_pull_count[0] += 1
+                processed = self.preprocessor.pull_and_process(n_samples=n_samples_per_pull, return_all_channels=True)
+                
+                # DEBUG: Log baseline pulls
+                if baseline_pull_count[0] % 10 == 1:  # Every 10 pulls
+                    print(f"[BASELINE PULL DEBUG] Pull #{baseline_pull_count[0]}: Requested {n_samples_per_pull} samples, "
+                          f"Got {len(processed)} samples, Shape={processed.shape if len(processed) > 0 else 'empty'}")
+                
+                if processed is not None and len(processed) > 0:
+                    baseline_data.append(processed)
+                    if baseline_pull_count[0] % 10 == 1:
+                        total_samples = sum(len(chunk) for chunk in baseline_data)
+                        print(f"[BASELINE PULL DEBUG] Total chunks={len(baseline_data)}, Total samples={total_samples}")
+                else:
+                    baseline_empty_count[0] += 1
+                    if baseline_pull_count[0] % 10 == 1:
+                        print(f"[BASELINE PULL DEBUG] Empty pulls: {baseline_empty_count[0]}/{baseline_pull_count[0]}")
+                
+                elapsed = time.perf_counter() - baseline_start
+                remaining = baseline_duration - elapsed
+                
+                if remaining > 0:
+                    # Update progress
+                    progress_pct = int((elapsed / baseline_duration) * 100)
+                    self.status_label.setText(f"Capturing baseline... {remaining:.1f}s remaining ({progress_pct}%)")
+                    self.progress_bar.setValue(progress_pct)
+                    
+                    # Continue collecting at proper rate
+                    QTimer.singleShot(pull_interval_ms, collect_baseline_sample)
+                else:
+                    # Baseline complete
+                    if baseline_data:
+                        all_baseline = np.vstack(baseline_data)
+                        print(f"[BASELINE DEBUG] Collected {len(baseline_data)} chunks, "
+                              f"Total shape={all_baseline.shape}, Duration={all_baseline.shape[0] / self.preprocessor.sample_rate:.2f}s")
+                        success = self.classifier.capture_baseline(all_baseline)
+                        
+                        if success:
+                            print(f"[BASELINE DEBUG] Baseline capture successful: has_baseline={self.classifier.has_baseline}")
+                            self.status_label.setText("Baseline captured successfully! You can now start composition.")
+                            QMessageBox.information(
+                                self,
+                                "Baseline Captured",
+                                f"Successfully captured {len(baseline_data)} chunks ({all_baseline.shape[0]} samples) of baseline data.\n\n"
+                                "You can now start the composition."
+                            )
+                        else:
+                            self.status_label.setText("Baseline capture failed. Please try again.")
+                            QMessageBox.warning(
+                                self,
+                                "Baseline Failed",
+                                "Failed to process baseline data. Please try again."
+                            )
+                    else:
+                        self.status_label.setText("No baseline data collected. Please try again.")
+                        QMessageBox.warning(
+                            self,
+                            "Baseline Failed",
+                            "No data was collected. Please check LSL connection and try again."
+                        )
+                    
+                    # Reset UI
+                    self.instruction_widget.set_instruction(None)
+                    self.instruction_widget.set_active(False)
+                    self.instruction_widget.set_baseline_mode(False)
+                    self.progress_bar.setValue(0)
+                    self.start_btn.setEnabled(True)
+                    
+                    # Send LSL marker with proper timestamp
+                    if self.marker_sender:
+                        try:
+                            from pylsl import local_clock
+                            lsl_timestamp = local_clock()
+                            if hasattr(self.marker_sender._outlet, 'push_sample'):
+                                self.marker_sender._outlet.push_sample(["Baseline:End"], lsl_timestamp)
+                            else:
+                                self.marker_sender.send("Baseline:End")
+                            print(f"[MI BASELINE] Sent Baseline:End marker at LSL time {lsl_timestamp:.6f}")
+                        except ImportError:
+                            self.marker_sender.send("Baseline:End")
+        
+        # Start collection
+        QTimer.singleShot(100, collect_baseline_sample)
     
     def _load_calibration(self) -> None:
         """Load calibration from file."""
