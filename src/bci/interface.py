@@ -764,11 +764,12 @@ class BCICompositionWindow(QMainWindow):
         self.setMinimumSize(1000, 700)
         
         # BCI components - Motor Imagery paradigm
-        self.stimulus = MotorImageryStimulus(duration=30.0)
+        # Default capture duration for hackathon demo: 15s (was 30s)
+        self.stimulus = MotorImageryStimulus(duration=15.0)
         # Use 1.0s window (64 samples at 64Hz) - optimal for motor imagery (matches MI-PLVGAT literature)
         # Classifier uses 64Hz (after downsampling from 250Hz input)
         self.classifier = MotorImageryClassifier(sample_rate=64.0, window_seconds=1.0)
-        self.controller = BCICursorController(duration=30.0)
+        self.controller = BCICursorController(duration=15.0)
         
         # EEG buffer for continuous classification
         self._eeg_buffer: List[Tuple[NDArray, float]] = []  # (samples, timestamp)
@@ -918,7 +919,7 @@ class BCICompositionWindow(QMainWindow):
         settings_layout.addWidget(QLabel("Duration:"))
         self.duration_spin = QSpinBox()
         self.duration_spin.setRange(5, 60)
-        self.duration_spin.setValue(30)
+        self.duration_spin.setValue(15)
         self.duration_spin.setSuffix(" s")
         self.duration_spin.valueChanged.connect(self._update_duration)
         settings_layout.addWidget(self.duration_spin)
@@ -2590,13 +2591,9 @@ class BCICompositionWindow(QMainWindow):
                             # Save baseline data to disk for analysis
                             self._save_baseline_data(all_baseline)
                             
-                            self.status_label.setText("Baseline captured successfully! You can now start composition.")
-                            QMessageBox.information(
-                                self,
-                                "Baseline Captured",
-                                f"Successfully captured {len(baseline_data)} chunks ({all_baseline.shape[0]} samples) of baseline data.\n\n"
-                                "You can now start the composition."
-                            )
+                            # Hackathon UX: don't block on a modal popup; immediately advance
+                            # into live data capture once baseline is ready.
+                            self.status_label.setText("Baseline captured. Starting live capture...")
                         else:
                             self.status_label.setText("Baseline capture failed. Please try again.")
                             QMessageBox.warning(
@@ -2617,7 +2614,13 @@ class BCICompositionWindow(QMainWindow):
                     self.instruction_widget.set_active(False)
                     self.instruction_widget.set_baseline_mode(False)
                     self.progress_bar.setValue(0)
-                    self.start_btn.setEnabled(True)
+                    # If baseline succeeded, auto-start composition immediately. Otherwise,
+                    # restore the start button so the user can retry.
+                    if self.classifier.has_baseline:
+                        self.start_btn.setEnabled(False)
+                        QTimer.singleShot(0, self._start_composition)
+                    else:
+                        self.start_btn.setEnabled(True)
                     
                     # Send LSL marker with proper timestamp
                     if self.marker_sender:

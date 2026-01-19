@@ -37,7 +37,7 @@ class MotorImageryStimulus:
         duration: Total stimulus duration in seconds
         free_choice_text: Text to display during free choice period
     """
-    duration: float = 30.0  # Total duration
+    duration: float = 15.0  # Total duration
     free_choice_text: str = "Free Choice - Imagine LEFT or RIGHT"
     
     # State
