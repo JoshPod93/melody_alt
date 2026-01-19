@@ -38,7 +38,7 @@ class PageSettings:
     pitch_grid_divisions: int = 12  # Horizontal lines per octave equivalent
     
     # Default frequency table
-    frequency_table_name: str = "Continuous"
+    frequency_table_name: str = "Hackathon Safe"
     
     # Playback settings
     tempo_scale: float = 1.0  # Tempo multiplier

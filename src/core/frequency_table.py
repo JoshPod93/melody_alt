@@ -388,7 +388,16 @@ class FrequencyTableLibrary:
     
     def _init_default_tables(self) -> None:
         """Initialize with standard frequency tables."""
+        # Default wide continuous table (legacy)
         self.add(FrequencyTable.continuous())
+        # Hackathon-safe continuous table: avoids sub-audio and painful highs
+        # Roughly E2 (~82Hz) to D6 (~1175Hz) for a musically usable range.
+        self.add(FrequencyTable.continuous(
+            name="Hackathon Safe",
+            min_freq=80.0,
+            max_freq=1200.0,
+            logarithmic=True
+        ))
         self.add(FrequencyTable.equal_tempered())
         self.add(FrequencyTable.microtonal(name="Quarter Tones", divisions_per_octave=24))
         self.add(FrequencyTable.microtonal(name="Eighth Tones", divisions_per_octave=48))

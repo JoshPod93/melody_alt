@@ -95,6 +95,8 @@ class BCIScore:
         page = Page(name=name)
         page.settings.duration = self.duration
         page.settings.loop_end = self.duration
+        # Ensure BCI playback uses the safe, narrowed pitch range by default.
+        page.settings.frequency_table_name = "Hackathon Safe"
         
         arc = self.to_arc(f"{name} Arc")
         page.add_arc(arc)
@@ -277,6 +279,35 @@ def synthesize_score(
     # Create synthesizer
     synth = Synthesizer()
     synth.set_page(page)
+
+    # Hackathon preset: bassier, fuzzier playback (no phaser).
+    # This affects BOTH manual Play and auto-play-after-capture since they share this path.
+    synth.effects.enabled = True
+    synth.effects.phaser_enabled = False
+    synth.effects.phaser_mix = 0.0
+
+    # Allow more low-end through, then boost bass.
+    synth.effects.highpass_hz = 5.0
+    synth.effects.lowpass_hz = 12000.0
+
+    # Fuzz voicing
+    synth.effects.distortion_enabled = True
+    synth.effects.distortion_drive = 50.0
+    synth.effects.distortion_mix = 1.0
+    synth.effects.distortion_mode = "hardclip"
+    synth.effects.distortion_clip = 0.02
+    synth.effects.distortion_oversample = 4
+    synth.effects.bass_boost_enabled = True
+    synth.effects.bass_boost_db = 18.0
+    synth.effects.bass_boost_hz = 90.0
+    synth.effects.bass_boost_slope = 1.0
+    synth.effects.fuzz_tone_lowpass_hz = 8000.0
+
+    # Prevent "bad clipping" at the very end by linearly scaling under a ceiling
+    synth.effects.auto_level = True
+    synth.effects.output_ceiling = 0.9
+
+    synth.reset_effects_state()
     
     # Render to array
     audio = synth.render_to_array(0, score.duration, stereo=True)
@@ -296,8 +327,6 @@ def play_score(score: BCIScore) -> None:
     Args:
         score: BCIScore to play
     """
-    import sounddevice as sd
-    
     if not score.trail or len(score.trail) < 2:
         print("Warning: Score has no trail data")
         return
@@ -320,15 +349,51 @@ def play_score(score: BCIScore) -> None:
             audio = audio.astype(np.float32)
             if np.max(np.abs(audio)) > 1.0:
                 audio = audio / np.max(np.abs(audio))
-            
-            # Play using sounddevice directly
-            sd.play(audio, samplerate=44100)
-            sd.wait()
+
+            # Prefer sounddevice; fall back to Windows wav playback if missing.
+            try:
+                import sounddevice as sd
+                sd.play(audio, samplerate=44100)
+                sd.wait()
+            except Exception as e:
+                print(f"Playback warning: sounddevice unavailable ({e}); using WAV fallback.")
+                _play_via_wav_fallback(audio, sample_rate=44100)
         else:
             print("Warning: No audio generated")
     except Exception as e:
         print(f"Playback error: {e}")
         raise
+
+
+def _play_via_wav_fallback(audio: np.ndarray, sample_rate: int = 44100) -> None:
+    """
+    Fallback playback for environments without sounddevice.
+    Writes a temporary WAV and plays it via winsound on Windows.
+    """
+    import tempfile
+    import wave
+
+    a = audio
+    if a.ndim == 1:
+        a = np.column_stack([a, a])
+    if a.ndim != 2 or a.shape[1] != 2:
+        raise ValueError(f"Expected stereo audio (n,2), got shape={a.shape}")
+
+    a = np.clip(a, -1.0, 1.0).astype(np.float32)
+    pcm = (a * 32767.0).astype(np.int16)
+
+    wav_path = tempfile.mkstemp(prefix="bci_score_", suffix=".wav")[1]
+    with wave.open(wav_path, "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(2)
+        wf.setframerate(int(sample_rate))
+        wf.writeframes(pcm.tobytes())
+
+    try:
+        import winsound
+        winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+    except Exception as e:
+        print(f"Playback fallback failed: {e}. WAV written to: {wav_path}")
 
 
 if __name__ == "__main__":

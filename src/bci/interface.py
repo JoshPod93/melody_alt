@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import time
 import json
+import threading
 import numpy as np
 from numpy.typing import NDArray
 from pathlib import Path
@@ -800,6 +801,14 @@ class BCICompositionWindow(QMainWindow):
         
         # Current score
         self.current_score: Optional[BCIScore] = None
+
+        # Hackathon UX: automatically play back the generated score when capture ends.
+        # Playback button remains available for replay.
+        self._auto_play_on_capture_complete: bool = True
+
+        # Playback threading (avoid freezing UI during long renders/plays)
+        self._playback_in_progress: bool = False
+        self._playback_thread: Optional[threading.Thread] = None
         
         # Calibration
         self._calibration_data: Optional[CalibrationData] = None
@@ -1219,6 +1228,10 @@ class BCICompositionWindow(QMainWindow):
         self._save_session_data()
         
         self._finalize_score()
+
+        # Auto-play immediately after capture completes (same path as Play button).
+        if self._auto_play_on_capture_complete and self.current_score is not None:
+            self._play_score()
         
         self._mode = SessionMode.IDLE
         
@@ -1228,8 +1241,9 @@ class BCICompositionWindow(QMainWindow):
         # self.random_btn.setEnabled(True)  # Removed - use calibration instead
         self.duration_spin.setEnabled(True)
         self.waveform_combo.setEnabled(True)
-        
-        self.status_label.setText("Composition complete! Play or save your score.")
+        # If auto-play is enabled, _play_score() sets a more specific status.
+        if not self._auto_play_on_capture_complete:
+            self.status_label.setText("Composition complete! Play or save your score.")
     
     def _check_screen_compatibility(self) -> None:
         """Screen compatibility check - simplified: using fixed 15Hz/12Hz frequencies."""
@@ -1962,18 +1976,38 @@ class BCICompositionWindow(QMainWindow):
         """Play the current score."""
         if not self.current_score:
             return
-        
+
+        # Avoid starting multiple playbacks
+        if self._playback_in_progress:
+            return
+
+        self._playback_in_progress = True
         self.status_label.setText("Playing score...")
         self.play_btn.setEnabled(False)
-        
-        try:
-            play_score(self.current_score)
-            self.status_label.setText("Playback complete")
-        except Exception as e:
-            QMessageBox.warning(self, "Playback Error", str(e))
-            self.status_label.setText(f"Playback error: {e}")
-        finally:
-            self.play_btn.setEnabled(True)
+
+        score = self.current_score
+
+        def _run_playback() -> None:
+            error: Optional[Exception] = None
+            try:
+                play_score(score)
+            except Exception as e:
+                error = e
+
+            def _finish_on_ui() -> None:
+                self._playback_in_progress = False
+                self.play_btn.setEnabled(True)
+                if error is None:
+                    self.status_label.setText("Playback complete")
+                else:
+                    QMessageBox.warning(self, "Playback Error", str(error))
+                    self.status_label.setText(f"Playback error: {error}")
+
+            # Schedule UI update back on the Qt thread
+            QTimer.singleShot(0, _finish_on_ui)
+
+        self._playback_thread = threading.Thread(target=_run_playback, daemon=True)
+        self._playback_thread.start()
     
     def _save_score(self) -> None:
         """Save the current score to file."""
